@@ -1,6 +1,7 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
-import Colors from '@/constants/Colors';
+import { CipherIcon } from '@/components/ui/CipherIcon';
+import { theme } from '@/constants/theme';
 
 type Props = {
   status: 'sending' | 'confirmed' | 'failed' | 'pending';
@@ -23,141 +24,217 @@ export function PaymentStatus({
   onRetry,
   onDismiss,
 }: Props) {
-  const config = {
-    sending: { bg: 'rgba(6, 182, 212, 0.1)', color: Colors.palette.cyan400, icon: '...' },
-    confirmed: { bg: 'rgba(34, 197, 94, 0.1)', color: Colors.palette.green400, icon: '\u2713' },
-    failed: { bg: 'rgba(239, 68, 68, 0.1)', color: Colors.palette.red400, icon: '\u2717' },
-    pending: { bg: 'rgba(234, 179, 8, 0.1)', color: Colors.palette.yellow400, icon: '\u23F0' },
-  }[status];
+  const isSuccess = status === 'confirmed';
+  const solDisplay = amountSol?.toFixed(2) ?? (amountUsd / 150).toFixed(2);
 
   return (
     <Animated.View
       entering={FadeIn}
       exiting={FadeOut}
-      style={[styles.container, { backgroundColor: config.bg }]}
+      style={styles.overlay}
     >
-      <View style={[styles.iconCircle, { borderColor: config.color }]}>
-        <Text style={[styles.icon, { color: config.color }]}>{config.icon}</Text>
-      </View>
-
-      <Text style={[styles.statusText, { color: config.color }]}>
-        {status === 'sending' && 'Sending...'}
-        {status === 'confirmed' && 'Paid'}
-        {status === 'failed' && 'Failed'}
-        {status === 'pending' && 'Saved for later'}
-      </Text>
-
-      <Text style={styles.amount}>${amountUsd.toFixed(2)}</Text>
-      {amountSol !== undefined && (
-        <Text style={styles.sol}>~{amountSol.toFixed(4)} SOL</Text>
-      )}
-      <Text style={styles.to}>to {contactName}</Text>
-
-      {txSignature && (
-        <Text style={styles.sig}>
-          tx: {txSignature.slice(0, 8)}...{txSignature.slice(-8)}
-        </Text>
-      )}
-
-      {error && <Text style={styles.error}>{error}</Text>}
-
-      <View style={styles.actions}>
-        {status === 'failed' && onRetry && (
-          <TouchableOpacity style={styles.retryBtn} onPress={onRetry}>
-            <Text style={styles.retryText}>Retry</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.dismissBtn} onPress={onDismiss}>
-          <Text style={styles.dismissText}>
-            {status === 'sending' ? '' : 'Done'}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.hero}>
+          <View style={styles.iconRing}>
+            <CipherIcon
+              name={isSuccess ? 'check' : status === 'failed' ? 'close' : 'hourglass-empty'}
+              size={40}
+              color={theme.colors.tertiary}
+            />
+          </View>
+          <Text style={styles.amountHero}>
+            {isSuccess ? '+ ' : ''}
+            {solDisplay} SOL
           </Text>
-        </TouchableOpacity>
-      </View>
+          <Text style={styles.statusLabel}>
+            {status === 'sending' && 'Sending…'}
+            {status === 'confirmed' && 'Confirmed'}
+            {status === 'failed' && 'Failed'}
+            {status === 'pending' && 'Saved for later'}
+          </Text>
+          <Text style={styles.subTo}>
+            ${amountUsd.toFixed(2)} to {contactName}
+          </Text>
+        </View>
+
+        {txSignature && (
+          <View style={styles.table}>
+            <View style={styles.tableHeader}>
+              <Text style={styles.tableHeaderText}>Transaction Details</Text>
+            </View>
+            <View style={styles.tableRow}>
+              <Text style={styles.rowLabel}>Network Fee</Text>
+              <Text style={styles.rowValue}>0.000005 SOL</Text>
+            </View>
+            <View style={styles.tableRow}>
+              <Text style={styles.rowLabel}>Timestamp</Text>
+              <Text style={styles.rowValue}>
+                {new Date().toISOString().slice(0, 19).replace('T', ' ')} UTC
+              </Text>
+            </View>
+            <View style={[styles.tableRow, styles.tableRowLast]}>
+              <Text style={styles.rowLabel}>Signature</Text>
+              <Text style={styles.rowValue} numberOfLines={1}>
+                {txSignature.slice(0, 16)}…
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {error && <Text style={styles.error}>{error}</Text>}
+
+        <View style={styles.actions}>
+          {status === 'failed' && onRetry && (
+            <TouchableOpacity style={styles.primaryBtn} onPress={onRetry}>
+              <Text style={styles.primaryBtnText}>Retry</Text>
+            </TouchableOpacity>
+          )}
+          {status !== 'sending' && (
+            <TouchableOpacity style={styles.returnBtn} onPress={onDismiss}>
+              <CipherIcon name="arrow-back" size={18} color={theme.colors.primary} />
+              <Text style={styles.returnText}>Return to Scan</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </ScrollView>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 28,
-    paddingBottom: 44,
-    alignItems: 'center',
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: theme.colors.black,
+    zIndex: 20,
   },
-  iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 2.5,
+  scroll: {
+    paddingHorizontal: theme.spacing.marginMobile,
+    paddingTop: 48,
+    paddingBottom: 120,
+  },
+  hero: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.outlineVariant,
+    marginBottom: 24,
+  },
+  iconRing: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 1,
+    borderColor: theme.colors.tertiary,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 14,
+    marginBottom: 20,
+    backgroundColor: theme.colors.surfaceContainerLowest,
   },
-  icon: {
-    fontSize: 24,
+  amountHero: {
+    fontSize: 48,
     fontWeight: '700',
-  },
-  statusText: {
-    fontSize: 16,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    color: theme.colors.primary,
+    letterSpacing: -1,
     marginBottom: 8,
   },
-  amount: {
-    color: '#fff',
-    fontSize: 36,
-    fontWeight: '800',
-  },
-  sol: {
-    color: '#888',
+  statusLabel: {
+    fontFamily: theme.fonts.mono,
     fontSize: 14,
-    marginTop: 4,
-  },
-  to: {
-    color: '#888',
-    fontSize: 15,
-    marginTop: 6,
+    letterSpacing: 3,
+    textTransform: 'uppercase',
+    color: theme.colors.tertiary,
     marginBottom: 8,
   },
-  sig: {
-    color: '#555',
+  subTo: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 13,
+    color: theme.colors.onSurfaceVariant,
+  },
+  table: {
+    borderWidth: 1,
+    borderColor: theme.colors.hardBorder,
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    borderRadius: theme.radius.default,
+    overflow: 'hidden',
+    marginBottom: 24,
+  },
+  tableHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.panelBg,
+    backgroundColor: theme.colors.panelBg,
+  },
+  tableHeaderText: {
+    fontFamily: theme.fonts.mono,
     fontSize: 11,
-    fontFamily: 'SpaceMono',
-    marginTop: 4,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    color: theme.colors.onSurfaceVariant,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.panelBg,
+  },
+  tableRowLast: {
+    borderBottomWidth: 0,
+  },
+  rowLabel: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
+    color: theme.colors.onSurfaceVariant,
+  },
+  rowValue: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
+    color: theme.colors.primary,
+    maxWidth: '55%',
   },
   error: {
-    color: Colors.palette.red400,
+    color: theme.colors.error,
+    fontFamily: theme.fonts.mono,
     fontSize: 13,
-    marginTop: 8,
+    textAlign: 'center',
+    marginBottom: 16,
   },
   actions: {
-    flexDirection: 'row',
     gap: 12,
-    marginTop: 20,
   },
-  retryBtn: {
-    backgroundColor: Colors.palette.cyan500,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 12,
+  primaryBtn: {
+    backgroundColor: theme.colors.tertiary,
+    paddingVertical: 16,
+    borderRadius: 999,
+    alignItems: 'center',
   },
-  retryText: {
-    color: '#fff',
+  primaryBtnText: {
+    fontFamily: theme.fonts.mono,
     fontWeight: '700',
-    fontSize: 15,
+    color: theme.colors.onTertiary,
   },
-  dismissBtn: {
-    paddingHorizontal: 28,
-    paddingVertical: 14,
+  returnBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.hardBorder,
+    borderRadius: theme.radius.default,
   },
-  dismissText: {
-    color: '#888',
-    fontSize: 15,
+  returnText: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    color: theme.colors.primary,
   },
 });

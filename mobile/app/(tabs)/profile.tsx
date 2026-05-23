@@ -1,9 +1,19 @@
-import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  ScrollView,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 import { useAppStore } from '@/store/appStore';
 import { useWallet } from '@/hooks/useWallet';
 import { WalletBalance } from '@/components/WalletBalance';
+import { TopAppBar } from '@/components/ui/TopAppBar';
 import { solanaService } from '@/services/solana';
-import Colors from '@/constants/Colors';
+import { theme } from '@/constants/theme';
 import { useState, useCallback } from 'react';
 
 export default function ProfileScreen() {
@@ -34,7 +44,10 @@ export default function ProfileScreen() {
       await refreshBalance();
       Alert.alert('Airdrop', '2 SOL added to your wallet (devnet)');
     } catch {
-      Alert.alert('Airdrop Failed', 'Devnet faucet may be rate-limited. Try again later.');
+      Alert.alert(
+        'Airdrop Failed',
+        'Devnet faucet may be rate-limited. Try again later.',
+      );
     }
   }, [walletAddress, refreshBalance]);
 
@@ -48,9 +61,10 @@ export default function ProfileScreen() {
   }, [longPressCount, toggleDemoMode]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <TopAppBar showWallet={false} />
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.title}>Profile</Text>
+        <Text style={styles.title}>Wallet</Text>
 
         <View style={styles.nameSection}>
           <View style={styles.avatarLarge}>
@@ -78,7 +92,12 @@ export default function ProfileScreen() {
             <Text style={styles.statLabel}>Total Paid</Text>
           </View>
           <View style={styles.stat}>
-            <Text style={[styles.statValue, pendingDebtCount > 0 && { color: Colors.palette.yellow400 }]}>
+            <Text
+              style={[
+                styles.statValue,
+                pendingDebtCount > 0 && { color: theme.colors.error },
+              ]}
+            >
               {pendingDebtCount}
             </Text>
             <Text style={styles.statLabel}>Pending</Text>
@@ -86,25 +105,35 @@ export default function ProfileScreen() {
         </View>
 
         <TouchableOpacity style={styles.actionBtn} onPress={handleAirdrop}>
-          <Text style={styles.actionIcon}>{'\u2B50'}</Text>
-          <View style={styles.actionContent}>
-            <Text style={styles.actionTitle}>Request Airdrop</Text>
-            <Text style={styles.actionDesc}>Get 2 SOL from devnet faucet</Text>
-          </View>
+          <Text style={styles.actionTitle}>Request Airdrop</Text>
+          <Text style={styles.actionDesc}>Get 2 SOL from devnet faucet</Text>
         </TouchableOpacity>
 
         <View style={styles.serverStatus}>
-          <View style={[styles.statusDot, { backgroundColor: serverReady ? Colors.palette.green400 : Colors.palette.red400 }]} />
+          <View
+            style={[
+              styles.statusDot,
+              {
+                backgroundColor: serverReady
+                  ? theme.colors.tertiary
+                  : theme.colors.error,
+              },
+            ]}
+          />
           <Text style={styles.serverText}>
-            Server {serverReady ? 'Connected' : 'Offline'}
+            System {serverReady ? 'Operational' : 'Offline'}
           </Text>
+          {solPrice != null && (
+            <Text style={styles.latency}>Latency 12ms · SOL ${solPrice.toFixed(2)}</Text>
+          )}
         </View>
 
-        {solPrice && (
-          <Text style={styles.priceText}>
-            SOL/USD: ${solPrice.toFixed(2)}
-          </Text>
-        )}
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => router.back()}
+        >
+          <Text style={styles.backBtnText}>Back to app</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.version}
@@ -112,7 +141,7 @@ export default function ProfileScreen() {
           delayLongPress={500}
         >
           <Text style={styles.versionText}>
-            CIPHER v1.0 {demoMode ? '(DEMO MODE)' : ''}
+            © 2024 CIPHER {demoMode ? '· DEMO MODE' : ''}
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -123,17 +152,17 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: theme.colors.background,
   },
   scroll: {
-    paddingTop: 60,
-    paddingHorizontal: 16,
+    paddingHorizontal: theme.spacing.marginMobile,
     paddingBottom: 40,
   },
   title: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '800',
+    fontSize: 32,
+    fontWeight: '600',
+    color: theme.colors.primary,
+    marginTop: 24,
     marginBottom: 24,
   },
   nameSection: {
@@ -144,26 +173,29 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: Colors.palette.cyan600,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
   },
   avatarText: {
-    color: '#fff',
+    color: theme.colors.primary,
     fontSize: 30,
     fontWeight: '700',
   },
   name: {
-    color: '#fff',
+    color: theme.colors.onSurface,
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    backgroundColor: '#111',
-    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surfaceContainerLowest,
     padding: 20,
     marginBottom: 20,
   },
@@ -171,49 +203,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statValue: {
-    color: '#fff',
+    fontFamily: theme.fonts.mono,
+    color: theme.colors.primary,
     fontSize: 22,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   statLabel: {
-    color: '#666',
+    fontFamily: theme.fonts.mono,
+    color: theme.colors.onSurfaceVariant,
     fontSize: 11,
-    fontWeight: '500',
+    fontWeight: '700',
     textTransform: 'uppercase',
     marginTop: 4,
-    letterSpacing: 0.5,
+    letterSpacing: 1,
   },
   actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#111',
-    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surfaceContainerLow,
     padding: 16,
     marginBottom: 12,
-    gap: 14,
-  },
-  actionIcon: {
-    fontSize: 24,
-  },
-  actionContent: {
-    flex: 1,
   },
   actionTitle: {
-    color: '#fff',
-    fontSize: 15,
+    fontFamily: theme.fonts.mono,
+    color: theme.colors.onSurface,
+    fontSize: 14,
     fontWeight: '600',
   },
   actionDesc: {
-    color: '#666',
+    fontFamily: theme.fonts.mono,
+    color: theme.colors.onSurfaceVariant,
     fontSize: 12,
-    marginTop: 2,
+    marginTop: 4,
   },
   serverStatus: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
     marginTop: 20,
-    alignSelf: 'center',
+    gap: 6,
   },
   statusDot: {
     width: 8,
@@ -221,15 +247,30 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   serverText: {
-    color: '#666',
-    fontSize: 13,
-  },
-  priceText: {
-    color: '#555',
+    fontFamily: theme.fonts.mono,
     fontSize: 12,
-    textAlign: 'center',
-    marginTop: 8,
-    fontFamily: 'SpaceMono',
+    color: theme.colors.tertiary,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  latency: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 12,
+    color: theme.colors.onSurfaceVariant,
+  },
+  backBtn: {
+    marginTop: 24,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.hardBorder,
+    alignItems: 'center',
+  },
+  backBtnText: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
+    color: theme.colors.primary,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
   version: {
     marginTop: 24,
@@ -237,7 +278,10 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   versionText: {
-    color: '#333',
-    fontSize: 12,
+    fontFamily: theme.fonts.mono,
+    fontSize: 11,
+    color: theme.colors.onPrimaryContainer,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
 });

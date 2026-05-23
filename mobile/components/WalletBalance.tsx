@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import Colors from '@/constants/Colors';
+import { MaterialIcons } from '@expo/vector-icons';
+import { theme } from '@/constants/theme';
 import { solanaService } from '@/services/solana';
 
 type Props = {
@@ -9,20 +10,31 @@ type Props = {
   onRefresh: () => void;
 };
 
-export function WalletBalance({ balanceSol, solPrice, walletAddress, onRefresh }: Props) {
+export function WalletBalance({
+  balanceSol,
+  solPrice,
+  walletAddress,
+  onRefresh,
+}: Props) {
   const usdValue = solPrice ? (balanceSol * solPrice).toFixed(2) : '—';
-  const shortAddr = walletAddress ? solanaService.shortenAddress(walletAddress) : '—';
+  const shortAddr = walletAddress
+    ? solanaService.shortenAddress(walletAddress)
+    : '—';
 
   return (
     <View style={styles.container}>
       <View style={styles.balanceRow}>
         <View>
-          <Text style={styles.label}>Balance</Text>
+          <Text style={styles.label}>Wallet Balance</Text>
           <Text style={styles.sol}>{balanceSol.toFixed(4)} SOL</Text>
-          <Text style={styles.usd}>~${usdValue}</Text>
+          <Text style={styles.usd}>~${usdValue} USDC</Text>
         </View>
         <TouchableOpacity style={styles.refreshBtn} onPress={onRefresh}>
-          <Text style={styles.refreshIcon}>{'\u21BB'}</Text>
+          <MaterialIcons
+            name="refresh"
+            size={20}
+            color={theme.colors.tertiary}
+          />
         </TouchableOpacity>
       </View>
       <Text style={styles.address}>{shortAddr}</Text>
@@ -32,10 +44,13 @@ export function WalletBalance({ balanceSol, solPrice, walletAddress, onRefresh }
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#111',
-    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surfaceContainerLowest,
     padding: 20,
     marginBottom: 16,
+    position: 'relative',
+    overflow: 'hidden',
   },
   balanceRow: {
     flexDirection: 'row',
@@ -43,39 +58,39 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   label: {
-    color: '#666',
-    fontSize: 12,
-    fontWeight: '500',
+    fontFamily: theme.fonts.mono,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 2,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 4,
+    color: theme.colors.onSurfaceVariant,
+    marginBottom: 8,
   },
   sol: {
-    color: '#fff',
     fontSize: 28,
-    fontWeight: '800',
+    fontWeight: '700',
+    color: theme.colors.primary,
+    letterSpacing: -0.5,
   },
   usd: {
-    color: '#888',
-    fontSize: 15,
-    marginTop: 2,
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
+    color: theme.colors.onSurfaceVariant,
+    marginTop: 4,
   },
   address: {
-    color: '#555',
+    fontFamily: theme.fonts.mono,
     fontSize: 12,
-    fontFamily: 'SpaceMono',
+    color: theme.colors.onPrimaryContainer,
     marginTop: 12,
   },
   refreshBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  refreshIcon: {
-    color: Colors.palette.cyan400,
-    fontSize: 20,
+    backgroundColor: theme.colors.surface,
   },
 });

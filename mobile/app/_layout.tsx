@@ -9,6 +9,7 @@ import { useEffect } from 'react';
 import { StatusBar } from 'react-native';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -38,12 +39,13 @@ export default function RootLayout() {
   }
 
   return (
+    <SafeAreaProvider>
     <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar barStyle="light-content" />
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: '#000' },
+          contentStyle: { backgroundColor: '#141313' },
         }}
       >
         <Stack.Screen name="(tabs)" />
@@ -57,5 +59,6 @@ export default function RootLayout() {
         />
       </Stack>
     </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }

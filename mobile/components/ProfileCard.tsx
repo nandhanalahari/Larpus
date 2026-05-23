@@ -1,9 +1,9 @@
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { Contact } from '@/store/appStore';
-import { ConfidenceRing } from './ConfidenceRing';
 import { solanaService } from '@/services/solana';
-import Colors from '@/constants/Colors';
+import { CipherIcon } from '@/components/ui/CipherIcon';
+import { theme } from '@/constants/theme';
 
 type Props = {
   contact: Contact;
@@ -17,7 +17,6 @@ type Props = {
 
 export function ProfileCard({
   contact,
-  confidence,
   requiresConfirmation,
   onConfirmIdentity,
   onDeny,
@@ -28,267 +27,259 @@ export function ProfileCard({
     ? solanaService.shortenAddress(contact.solanaWalletAddress)
     : 'No wallet linked';
 
+  if (requiresConfirmation) {
+    return (
+      <Animated.View
+        entering={SlideInDown.springify().damping(18)}
+        exiting={SlideOutDown.duration(200)}
+        style={styles.confirmWrap}
+      >
+        <View style={styles.confirmCard}>
+          <Text style={styles.confirmQuestion}>Is this {contact.name}?</Text>
+          <View style={styles.confirmRow}>
+            <TouchableOpacity style={styles.confirmYes} onPress={onConfirmIdentity}>
+              <Text style={styles.confirmYesText}>Yes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.confirmNo} onPress={onDeny}>
+              <Text style={styles.confirmNoText}>No</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Animated.View>
+    );
+  }
+
   return (
     <Animated.View
       entering={SlideInDown.springify().damping(18)}
       exiting={SlideOutDown.duration(200)}
-      style={styles.container}
+      style={styles.wrap}
     >
-      <View style={styles.handle} />
-
-      {requiresConfirmation ? (
-        <View style={styles.confirmBanner}>
-          <Text style={styles.confirmText}>Is this {contact.name}?</Text>
-          <View style={styles.confirmButtons}>
-            <TouchableOpacity style={styles.confirmYes} onPress={onConfirmIdentity}>
-              <Text style={styles.confirmBtnText}>Yes</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.confirmNo} onPress={onDeny}>
-              <Text style={styles.confirmBtnTextDeny}>No</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : null}
-
-      <View style={styles.header}>
-        <View style={styles.nameRow}>
+      <View style={styles.card}>
+        <View style={styles.topSection}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{contact.name.charAt(0).toUpperCase()}</Text>
+            <Text style={styles.avatarLetter}>
+              {contact.name.charAt(0).toUpperCase()}
+            </Text>
           </View>
-          <View style={styles.nameBlock}>
+          <View style={styles.identity}>
             <Text style={styles.name}>{contact.name}</Text>
             <Text style={styles.wallet}>{wallet}</Text>
-            {contact.phone && <Text style={styles.phone}>{contact.phone}</Text>}
-          </View>
-          <ConfidenceRing confidence={confidence} size={44} />
-        </View>
-      </View>
-
-      {contact.lastPayment && (
-        <View style={styles.lastPayment}>
-          <Text style={styles.label}>Last paid</Text>
-          <Text style={styles.value}>
-            ${contact.lastPayment.amountUsd.toFixed(2)} &middot;{' '}
-            {new Date(contact.lastPayment.paidAt).toLocaleDateString()}
-          </Text>
-        </View>
-      )}
-
-      {contact.pendingDebts.length > 0 && (
-        <View style={styles.debtsSection}>
-          <Text style={styles.label}>Open debts</Text>
-          {contact.pendingDebts.map((debt) => (
-            <View key={debt.debtId} style={styles.debtRow}>
-              <Text style={styles.debtAmount}>${debt.amountUsd.toFixed(2)}</Text>
-              <Text style={styles.debtDue}>
-                due {new Date(debt.dueDate).toLocaleDateString()}
+            {contact.lastPayment && (
+              <Text style={styles.lastPaid}>
+                Last Paid: ${contact.lastPayment.amountUsd.toFixed(0)} (
+                {new Date(contact.lastPayment.paidAt).toLocaleDateString()})
               </Text>
-            </View>
-          ))}
-          <Text style={styles.totalOwed}>
-            Total outstanding: ${contact.totalOutstandingUsd.toFixed(2)}
+            )}
+          </View>
+        </View>
+
+        {contact.pendingDebts.length > 0 && (
+          <View style={styles.debtsBlock}>
+            {contact.pendingDebts.map((debt) => (
+              <Text key={debt.debtId} style={styles.debtLine}>
+                Pending ${debt.amountUsd.toFixed(2)}
+              </Text>
+            ))}
+          </View>
+        )}
+
+        <View style={styles.intentSection}>
+          <Text style={styles.intentLabel}>Ready to pay</Text>
+          <Text style={styles.intentHint}>
+            Speak amount after tapping confirm
           </Text>
         </View>
-      )}
 
-      {!requiresConfirmation && (
         <View style={styles.actions}>
           {contact.solanaWalletAddress ? (
-            <TouchableOpacity style={styles.payButton} onPress={onStartPayment}>
-              <Text style={styles.payButtonText}>Pay {contact.name}</Text>
+            <TouchableOpacity style={styles.primaryBtn} onPress={onStartPayment}>
+              <CipherIcon name="fingerprint" size={20} color={theme.colors.onTertiary} />
+              <Text style={styles.primaryBtnText}>Start Voice Payment</Text>
             </TouchableOpacity>
           ) : (
-            <View style={styles.noWalletBanner}>
+            <View style={styles.noWallet}>
               <Text style={styles.noWalletText}>No wallet linked</Text>
             </View>
           )}
-          <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-            <Text style={styles.closeButtonText}>Close</Text>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={onClose}>
+            <Text style={styles.secondaryBtnText}>Cancel</Text>
           </TouchableOpacity>
         </View>
-      )}
+      </View>
     </Animated.View>
   );
 }
 
-const { width } = Dimensions.get('window');
-
 const styles = StyleSheet.create({
-  container: {
+  wrap: {
     position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#111',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    bottom: 88,
+    left: theme.spacing.marginMobile,
+    right: theme.spacing.marginMobile,
+  },
+  confirmWrap: {
+    position: 'absolute',
+    bottom: 88,
+    left: theme.spacing.marginMobile,
+    right: theme.spacing.marginMobile,
+  },
+  card: {
+    backgroundColor: theme.colors.surfaceContainerLow,
+    borderWidth: 1,
+    borderColor: `${theme.colors.outlineVariant}4D`,
+    borderRadius: theme.radius.xl,
+    overflow: 'hidden',
+  },
+  confirmCard: {
+    backgroundColor: theme.colors.panelBg,
+    borderWidth: 1,
+    borderColor: theme.colors.hardBorder,
     padding: 20,
-    paddingBottom: 36,
-    maxHeight: '60%',
+    borderRadius: theme.radius.xl,
   },
-  handle: {
-    width: 40,
-    height: 4,
-    backgroundColor: '#444',
-    borderRadius: 2,
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  confirmBanner: {
-    backgroundColor: 'rgba(234, 179, 8, 0.15)',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 14,
-  },
-  confirmText: {
-    color: Colors.palette.yellow400,
-    fontSize: 16,
+  confirmQuestion: {
+    color: theme.colors.primary,
+    fontSize: 18,
     fontWeight: '600',
     textAlign: 'center',
-    marginBottom: 10,
-  },
-  confirmButtons: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 12,
-  },
-  confirmYes: {
-    backgroundColor: Colors.palette.cyan500,
-    paddingHorizontal: 28,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  confirmNo: {
-    borderWidth: 1.5,
-    borderColor: '#555',
-    paddingHorizontal: 28,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  confirmBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  confirmBtnTextDeny: {
-    color: '#aaa',
-    fontWeight: '600',
-    fontSize: 15,
-  },
-  header: {
     marginBottom: 14,
   },
-  nameRow: {
+  confirmRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 12,
+    justifyContent: 'center',
+  },
+  confirmYes: {
+    backgroundColor: theme.colors.tertiary,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: 999,
+  },
+  confirmYesText: {
+    color: theme.colors.onTertiary,
+    fontFamily: theme.fonts.mono,
+    fontWeight: '700',
+  },
+  confirmNo: {
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
+    borderRadius: theme.radius.default,
+  },
+  confirmNoText: {
+    color: theme.colors.onSurface,
+    fontFamily: theme.fonts.mono,
+  },
+  topSection: {
+    flexDirection: 'row',
+    padding: theme.spacing.gutter,
+    gap: theme.spacing.gutter,
+    borderBottomWidth: 1,
+    borderBottomColor: `${theme.colors.outlineVariant}4D`,
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: Colors.palette.cyan600,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    borderWidth: 1,
+    borderColor: `${theme.colors.outline}33`,
+    backgroundColor: theme.colors.surfaceContainerHigh,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: {
-    color: '#fff',
-    fontSize: 20,
+  avatarLetter: {
+    fontSize: 24,
     fontWeight: '700',
+    color: theme.colors.primary,
   },
-  nameBlock: {
+  identity: {
     flex: 1,
+    justifyContent: 'center',
   },
   name: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '600',
+    color: theme.colors.onSurface,
+    marginBottom: 4,
   },
   wallet: {
-    color: '#888',
-    fontSize: 13,
-    fontFamily: 'SpaceMono',
-    marginTop: 2,
-  },
-  phone: {
-    color: '#777',
+    fontFamily: theme.fonts.mono,
     fontSize: 12,
-    marginTop: 2,
+    color: theme.colors.onSurfaceVariant,
+    opacity: 0.7,
   },
-  lastPayment: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#222',
-  },
-  label: {
-    color: '#666',
-    fontSize: 13,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  value: {
-    color: '#ccc',
+  lastPaid: {
     fontSize: 14,
-  },
-  debtsSection: {
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#222',
-  },
-  debtRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  debtAmount: {
-    color: Colors.palette.red400,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  debtDue: {
-    color: '#777',
-    fontSize: 13,
-  },
-  totalOwed: {
-    color: Colors.palette.red400,
-    fontSize: 14,
-    fontWeight: '700',
+    color: theme.colors.tertiary,
     marginTop: 6,
   },
-  actions: {
-    marginTop: 16,
-    gap: 10,
+  debtsBlock: {
+    paddingHorizontal: theme.spacing.gutter,
+    paddingTop: 8,
   },
-  payButton: {
-    backgroundColor: Colors.palette.cyan500,
-    paddingVertical: 16,
-    borderRadius: 14,
+  debtLine: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 13,
+    color: theme.colors.error,
+  },
+  intentSection: {
     alignItems: 'center',
+    paddingVertical: 28,
   },
-  payButtonText: {
-    color: '#fff',
-    fontSize: 17,
+  intentLabel: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 11,
     fontWeight: '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    color: theme.colors.onSurfaceVariant,
+    marginBottom: 8,
   },
-  noWalletBanner: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    paddingVertical: 14,
-    borderRadius: 14,
+  intentHint: {
+    fontSize: 14,
+    color: theme.colors.onSurfaceVariant,
+  },
+  actions: {
+    padding: theme.spacing.gutter,
+    gap: 12,
+    backgroundColor: `${theme.colors.surfaceContainer}80`,
+  },
+  primaryBtn: {
+    height: 56,
+    backgroundColor: theme.colors.tertiary,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  primaryBtnText: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.onTertiary,
+  },
+  secondaryBtn: {
+    height: 48,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    borderRadius: theme.radius.default,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  secondaryBtnText: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
+    color: theme.colors.onSurface,
+  },
+  noWallet: {
+    paddingVertical: 16,
     alignItems: 'center',
   },
   noWalletText: {
-    color: '#666',
-    fontSize: 15,
-  },
-  closeButton: {
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  closeButtonText: {
-    color: '#666',
-    fontSize: 15,
+    color: theme.colors.onSurfaceVariant,
+    fontFamily: theme.fonts.mono,
   },
 });

@@ -1,24 +1,29 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import { useState, useCallback, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+} from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '@/store/appStore';
 import { useFaceRecognition } from '@/hooks/useFaceRecognition';
 import { useVoice } from '@/hooks/useVoice';
 import { useWallet } from '@/hooks/useWallet';
-import { FaceOverlay } from '@/components/FaceOverlay';
 import { ProfileCard } from '@/components/ProfileCard';
 import { VoiceListener } from '@/components/VoiceListener';
 import { PaymentStatus } from '@/components/PaymentStatus';
+import { ScanReticle } from '@/components/ScanReticle';
 import { solanaService } from '@/services/solana';
 import { elevenlabsService } from '@/services/elevenlabs';
-import Colors from '@/constants/Colors';
-
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+import { theme } from '@/constants/theme';
 
 type UIState = 'scanning' | 'profile' | 'voice' | 'payment_status';
 
 export default function CameraScreen() {
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [uiState, setUIState] = useState<UIState>('scanning');
   const [paymentResult, setPaymentResult] = useState<{
@@ -38,12 +43,13 @@ export default function CameraScreen() {
     demoMode,
     solPrice,
     walletAddress,
+    transcript,
+    parsedAmount,
   } = useAppStore();
 
-  const { recognize, reset: resetRecognition } = useFaceRecognition();
-  const { isListening, startListening, stopListening, parseTranscript } = useVoice();
+  const { reset: resetRecognition } = useFaceRecognition();
+  const { isListening, startListening, stopListening } = useVoice();
   const { canAfford, usdToSol, refreshBalance, fetchSolPrice } = useWallet();
-  const { transcript, parsedAmount } = useAppStore();
 
   useEffect(() => {
     if (!onboardingComplete) {
@@ -55,6 +61,12 @@ export default function CameraScreen() {
     fetchSolPrice();
     if (walletAddress) refreshBalance();
   }, []);
+
+  useEffect(() => {
+    if (recognizedContact && uiState === 'scanning') {
+      setUIState('profile');
+    }
+  }, [recognizedContact]);
 
   const handleStartPayment = useCallback(() => {
     setUIState('voice');
@@ -71,12 +83,20 @@ export default function CameraScreen() {
       try {
         const amountSol = usdToSol(amount);
         if (!amountSol) {
-          setPaymentResult({ status: 'failed', amountUsd: amount, error: 'Could not get SOL price' });
+          setPaymentResult({
+            status: 'failed',
+            amountUsd: amount,
+            error: 'Could not get SOL price',
+          });
           return;
         }
 
         if (!recognizedContact.solanaWalletAddress) {
-          setPaymentResult({ status: 'failed', amountUsd: amount, error: 'No wallet address' });
+          setPaymentResult({
+            status: 'failed',
+            amountUsd: amount,
+            error: 'No wallet address',
+          });
           return;
         }
 
@@ -90,7 +110,11 @@ export default function CameraScreen() {
             createdAt: new Date().toISOString(),
             dueDate: new Date(Date.now() + 7 * 86400000).toISOString(),
           });
-          setPaymentResult({ status: 'pending', amountUsd: amount, amountSol });
+          setPaymentResult({
+            status: 'pending',
+            amountUsd: amount,
+            amountSol,
+          });
           elevenlabsService.speakLine('insufficient_funds');
           return;
         }
@@ -103,7 +127,11 @@ export default function CameraScreen() {
             amountSol,
             txSignature: fakeSig,
           });
-          elevenlabsService.speakLine('paid_confirmation', `$${amount}`, recognizedContact.name);
+          elevenlabsService.speakLine(
+            'paid_confirmation',
+            `$${amount}`,
+            recognizedContact.name,
+          );
           return;
         }
 
@@ -132,7 +160,11 @@ export default function CameraScreen() {
           confirmedAt: new Date().toISOString(),
         });
 
-        elevenlabsService.speakLine('paid_confirmation', `$${amount}`, recognizedContact.name);
+        elevenlabsService.speakLine(
+          'paid_confirmation',
+          `$${amount}`,
+          recognizedContact.name,
+        );
         refreshBalance();
       } catch (err: any) {
         setPaymentResult({
@@ -143,7 +175,15 @@ export default function CameraScreen() {
         elevenlabsService.speakLine('tx_failed');
       }
     },
-    [recognizedContact, walletAddress, demoMode, solPrice, canAfford, usdToSol, refreshBalance],
+    [
+      recognizedContact,
+      walletAddress,
+      demoMode,
+      solPrice,
+      canAfford,
+      usdToSol,
+      refreshBalance,
+    ],
   );
 
   const handleDismiss = useCallback(() => {
@@ -160,7 +200,7 @@ export default function CameraScreen() {
   if (!permission) {
     return (
       <View style={styles.center}>
-        <Text style={styles.permText}>Requesting camera permission...</Text>
+        <Text style={styles.permText}>Requesting camera permission…</Text>
       </View>
     );
   }
@@ -168,7 +208,9 @@ export default function CameraScreen() {
   if (!permission.granted) {
     return (
       <View style={styles.center}>
-        <Text style={styles.permText}>Camera access is needed to scan faces</Text>
+        <Text style={styles.permText}>
+          Camera access is needed to scan faces
+        </Text>
         <TouchableOpacity style={styles.permBtn} onPress={requestPermission}>
           <Text style={styles.permBtnText}>Grant Permission</Text>
         </TouchableOpacity>
@@ -176,28 +218,36 @@ export default function CameraScreen() {
     );
   }
 
+  const showScanChrome =
+    uiState === 'scanning' || uiState === 'profile' || uiState === 'voice';
+
   return (
     <View style={styles.container}>
       <CameraView style={styles.camera} facing="back">
-        <View style={styles.topBar}>
-          <Text style={styles.logo}>CIPHER</Text>
-          {demoMode && (
-            <View style={styles.demoBadge}>
-              <Text style={styles.demoText}>DEMO</Text>
+        {showScanChrome && (
+          <View style={styles.overlay} pointerEvents="box-none">
+            <View style={[styles.statusWrap, { paddingTop: insets.top + 16 }]}>
+              <View style={styles.statusPill}>
+                <View style={styles.statusDot} />
+                <Text style={styles.statusText}>
+                  {recognizedContact
+                    ? 'Identity locked'
+                    : 'Biometric Syncing…'}
+                </Text>
+              </View>
+              {demoMode && (
+                <View style={styles.demoBadge}>
+                  <Text style={styles.demoText}>DEMO</Text>
+                </View>
+              )}
             </View>
-          )}
-        </View>
 
-        {uiState === 'scanning' && (
-          <View style={styles.scanHint}>
-            <Text style={styles.scanHintText}>
-              {recognizedContact ? '' : 'Point at someone to scan'}
-            </Text>
+            {uiState !== 'voice' && <ScanReticle />}
           </View>
         )}
       </CameraView>
 
-      {uiState === 'scanning' && recognizedContact && (
+      {uiState === 'profile' && recognizedContact && (
         <ProfileCard
           contact={recognizedContact}
           confidence={recognitionConfidence}
@@ -248,71 +298,76 @@ export default function CameraScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: theme.colors.black,
   },
   camera: {
     flex: 1,
   },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'space-between',
+  },
   center: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: theme.colors.black,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 32,
   },
   permText: {
-    color: '#aaa',
+    color: theme.colors.onSurfaceVariant,
     fontSize: 16,
     textAlign: 'center',
     marginBottom: 20,
   },
   permBtn: {
-    backgroundColor: Colors.palette.cyan500,
+    backgroundColor: theme.colors.tertiary,
     paddingHorizontal: 28,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 999,
   },
   permBtnText: {
-    color: '#fff',
+    color: theme.colors.onTertiary,
+    fontFamily: theme.fonts.mono,
     fontWeight: '700',
     fontSize: 16,
   },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  statusWrap: {
     alignItems: 'center',
-    paddingTop: 60,
-    paddingHorizontal: 20,
+    gap: 8,
   },
-  logo: {
-    color: Colors.palette.cyan400,
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: 3,
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: theme.colors.panelBg,
+    borderWidth: 1,
+    borderColor: theme.colors.hardBorder,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: theme.colors.accent,
+  },
+  statusText: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
+    color: theme.colors.primary,
   },
   demoBadge: {
-    backgroundColor: 'rgba(234, 179, 8, 0.2)',
+    backgroundColor: `${theme.colors.error}33`,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 6,
+    borderRadius: theme.radius.default,
   },
   demoText: {
-    color: Colors.palette.yellow400,
+    fontFamily: theme.fonts.mono,
     fontSize: 11,
     fontWeight: '700',
+    color: theme.colors.error,
     letterSpacing: 1,
-  },
-  scanHint: {
-    position: 'absolute',
-    bottom: 140,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
-  },
-  scanHintText: {
-    color: '#aaa',
-    fontSize: 14,
   },
 });

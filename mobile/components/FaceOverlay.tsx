@@ -7,7 +7,7 @@ import Animated, {
   withRepeat,
   Easing,
 } from 'react-native-reanimated';
-import Colors from '@/constants/Colors';
+import { theme } from '@/constants/theme';
 
 type FaceBounds = {
   x: number;
@@ -61,9 +61,9 @@ export function FaceOverlay({
         const isSelected = selectedIndex === i;
         const borderColor = isSelected
           ? isRecognizing
-            ? Colors.palette.cyan400
-            : Colors.palette.green400
-          : Colors.palette.white;
+            ? theme.colors.accent
+            : theme.colors.tertiary
+          : theme.colors.primary;
 
         return (
           <TouchableOpacity

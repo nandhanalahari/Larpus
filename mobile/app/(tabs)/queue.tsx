@@ -1,85 +1,95 @@
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
-import { SafeAreaView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useQueue } from '@/hooks/useQueue';
 import { useWallet } from '@/hooks/useWallet';
 import { QueueItemRow } from '@/components/QueueItem';
-import { WalletBalance } from '@/components/WalletBalance';
-import Colors from '@/constants/Colors';
+import { TopAppBar } from '@/components/ui/TopAppBar';
+import { theme } from '@/constants/theme';
 
 export default function QueueScreen() {
-  const { queue, remove, clear, executeAll, totalUsd, totalSol, canAffordAll } = useQueue();
-  const { walletAddress, walletBalanceSol, solPrice, refreshBalance } = useWallet();
+  const { queue, remove, clear, executeAll, totalUsd, canAffordAll } = useQueue();
+  const { refreshBalance } = useWallet();
 
   const waitingCount = queue.filter((i) => i.status === 'waiting').length;
   const hasItems = queue.length > 0;
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Payment Queue</Text>
-
-      <WalletBalance
-        balanceSol={walletBalanceSol}
-        solPrice={solPrice}
-        walletAddress={walletAddress}
-        onRefresh={refreshBalance}
-      />
-
-      {!hasItems ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyIcon}>{'\u2630'}</Text>
-          <Text style={styles.emptyTitle}>No payments queued</Text>
-          <Text style={styles.emptyDesc}>
-            Scan faces on the camera tab to add payments here
-          </Text>
+    <SafeAreaView style={styles.container} edges={['bottom']}>
+      <TopAppBar onWalletPress={() => refreshBalance()} />
+      <View style={styles.content}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Batch Queue</Text>
+          <Text style={styles.subtitle}>Execute pending transactions</Text>
         </View>
-      ) : (
-        <>
-          <FlatList
-            data={queue}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <QueueItemRow item={item} onRemove={() => remove(item.id)} />
-            )}
-            style={styles.list}
-          />
 
-          <View style={styles.summary}>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Total</Text>
-              <View style={styles.summaryValues}>
-                <Text style={styles.summaryUsd}>${totalUsd.toFixed(2)}</Text>
-                <Text style={styles.summarySol}>~{totalSol.toFixed(4)} SOL</Text>
+        {!hasItems ? (
+          <View style={styles.empty}>
+            <MaterialIcons
+              name="view-list"
+              size={48}
+              color={theme.colors.surfaceContainerHigh}
+            />
+            <Text style={styles.emptyTitle}>No payments queued</Text>
+            <Text style={styles.emptyDesc}>
+              Scan faces on the Scan tab to add payments here
+            </Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.summary}>
+              <View style={styles.summaryTop}>
+                <Text style={styles.summaryLabel}>Total Pending</Text>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{queue.length} TXNS</Text>
+                </View>
               </View>
+              <Text style={styles.summaryAmount}>
+                ${totalUsd.toFixed(2)}{' '}
+                <Text style={styles.summaryUnit}>USDC</Text>
+              </Text>
+            </View>
+
+            <View style={styles.listCard}>
+              <FlatList
+                data={queue}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <QueueItemRow item={item} onRemove={() => remove(item.id)} />
+                )}
+                style={styles.list}
+                scrollEnabled={false}
+              />
             </View>
 
             {!canAffordAll && waitingCount > 0 && (
-              <View style={styles.warningBanner}>
-                <Text style={styles.warningText}>
-                  Insufficient balance for all payments
-                </Text>
-              </View>
+              <Text style={styles.warning}>
+                Insufficient balance for all payments
+              </Text>
             )}
 
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[
-                  styles.payAllBtn,
-                  waitingCount === 0 && styles.btnDisabled,
-                ]}
-                onPress={executeAll}
-                disabled={waitingCount === 0}
-              >
-                <Text style={styles.payAllText}>
-                  Pay All ({waitingCount})
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.clearBtn} onPress={clear}>
-                <Text style={styles.clearText}>Clear</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </>
-      )}
+            <TouchableOpacity
+              style={[
+                styles.payAllBtn,
+                waitingCount === 0 && styles.btnDisabled,
+              ]}
+              onPress={executeAll}
+              disabled={waitingCount === 0}
+            >
+              <Text style={styles.payAllText}>Pay All Now</Text>
+              <MaterialIcons
+                name="send"
+                size={18}
+                color={theme.colors.onTertiary}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.clearBtn} onPress={clear}>
+              <Text style={styles.clearText}>Clear queue</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
     </SafeAreaView>
   );
 }
@@ -87,111 +97,137 @@ export default function QueueScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
-    paddingTop: 60,
-    paddingHorizontal: 16,
+    backgroundColor: theme.colors.background,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: theme.spacing.marginMobile,
+    paddingBottom: 24,
+  },
+  header: {
+    paddingTop: 24,
+    marginBottom: 24,
   },
   title: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: '800',
-    marginBottom: 20,
+    fontSize: 24,
+    fontWeight: '600',
+    color: theme.colors.onBackground,
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
+    color: theme.colors.onSurfaceVariant,
   },
   empty: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingBottom: 100,
-  },
-  emptyIcon: {
-    fontSize: 48,
-    color: '#333',
-    marginBottom: 16,
+    paddingBottom: 80,
+    gap: 12,
   },
   emptyTitle: {
-    color: '#555',
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontFamily: theme.fonts.mono,
+    fontSize: 16,
+    color: theme.colors.onSurfaceVariant,
   },
   emptyDesc: {
-    color: '#444',
-    fontSize: 14,
+    fontFamily: theme.fonts.mono,
+    fontSize: 13,
+    color: theme.colors.onPrimaryContainer,
     textAlign: 'center',
-    paddingHorizontal: 40,
-  },
-  list: {
-    flex: 1,
+    paddingHorizontal: 32,
   },
   summary: {
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    padding: 24,
+    marginBottom: 24,
+    gap: 12,
   },
-  summaryRow: {
+  summaryTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
   },
   summaryLabel: {
-    color: '#888',
+    fontFamily: theme.fonts.mono,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    color: theme.colors.onSurfaceVariant,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surfaceVariant,
+  },
+  badgeText: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 11,
+    color: theme.colors.primary,
+  },
+  summaryAmount: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: theme.colors.primary,
+    letterSpacing: -0.5,
+  },
+  summaryUnit: {
+    fontFamily: theme.fonts.mono,
     fontSize: 16,
-    fontWeight: '600',
+    color: theme.colors.onSurfaceVariant,
   },
-  summaryValues: {
-    alignItems: 'flex-end',
+  listCard: {
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surface,
+    marginBottom: 16,
   },
-  summaryUsd: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: '800',
+  list: {
+    maxHeight: 320,
   },
-  summarySol: {
-    color: '#666',
+  warning: {
+    fontFamily: theme.fonts.mono,
     fontSize: 13,
-  },
-  warningBanner: {
-    backgroundColor: 'rgba(234, 179, 8, 0.12)',
-    padding: 12,
-    borderRadius: 10,
+    color: theme.colors.error,
+    textAlign: 'center',
     marginBottom: 12,
   },
-  warningText: {
-    color: Colors.palette.yellow400,
-    fontSize: 13,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
   payAllBtn: {
-    flex: 1,
-    backgroundColor: Colors.palette.cyan500,
-    paddingVertical: 16,
-    borderRadius: 14,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: theme.colors.tertiary,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 999,
+    alignSelf: 'flex-end',
+    marginBottom: 12,
   },
   btnDisabled: {
     opacity: 0.4,
   },
   payAllText: {
-    color: '#fff',
-    fontSize: 17,
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
     fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: theme.colors.onTertiary,
   },
   clearBtn: {
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: '#222',
-    alignItems: 'center',
+    alignSelf: 'center',
+    paddingVertical: 8,
   },
   clearText: {
-    color: '#666',
-    fontSize: 15,
+    fontFamily: theme.fonts.mono,
+    fontSize: 12,
+    color: theme.colors.onSurfaceVariant,
   },
 });

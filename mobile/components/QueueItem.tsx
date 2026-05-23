@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import Colors from '@/constants/Colors';
+import { MaterialIcons } from '@expo/vector-icons';
+import { theme } from '@/constants/theme';
 import type { QueueItem as QueueItemType } from '@/store/appStore';
 
 type Props = {
@@ -7,38 +8,63 @@ type Props = {
   onRemove: () => void;
 };
 
-const statusConfig = {
-  waiting: { color: '#666', label: 'Waiting', icon: '\u25A1' },
-  sending: { color: Colors.palette.cyan400, label: 'Sending...', icon: '\u23F3' },
-  confirmed: { color: Colors.palette.green400, label: 'Confirmed', icon: '\u2713' },
-  failed: { color: Colors.palette.red400, label: 'Failed', icon: '\u2717' },
-};
+function StatusChip({ status }: { status: QueueItemType['status'] }) {
+  if (status === 'waiting') {
+    return (
+      <View style={styles.chip}>
+        <View style={styles.chipDotMuted} />
+        <Text style={styles.chipTextMuted}>Waiting</Text>
+      </View>
+    );
+  }
+  if (status === 'sending') {
+    return (
+      <View style={[styles.chip, styles.chipActive]}>
+        <View style={styles.chipDotActive} />
+        <Text style={styles.chipTextActive}>Processing…</Text>
+      </View>
+    );
+  }
+  if (status === 'confirmed') {
+    return (
+      <View style={[styles.chip, styles.chipDone]}>
+        <MaterialIcons name="check" size={12} color={theme.colors.primary} />
+        <Text style={styles.chipTextDone}>Confirmed</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.chip}>
+      <Text style={styles.chipTextMuted}>Failed</Text>
+    </View>
+  );
+}
 
 export function QueueItemRow({ item, onRemove }: Props) {
-  const cfg = statusConfig[item.status];
-
   return (
     <View style={styles.row}>
       <View style={styles.left}>
-        <View style={[styles.avatar, { borderColor: cfg.color }]}>
-          <Text style={styles.avatarText}>{item.contact.name.charAt(0)}</Text>
+        <View style={styles.avatar}>
+          <MaterialIcons
+            name="person"
+            size={20}
+            color={theme.colors.onSurfaceVariant}
+          />
         </View>
         <View>
           <Text style={styles.name}>{item.contact.name}</Text>
+          <Text style={styles.amountSub}>${item.amountUsd.toFixed(2)}</Text>
           {item.error && <Text style={styles.error}>{item.error}</Text>}
         </View>
       </View>
       <View style={styles.right}>
-        <Text style={styles.amount}>${item.amountUsd.toFixed(2)}</Text>
-        <Text style={[styles.status, { color: cfg.color }]}>
-          {cfg.icon} {cfg.label}
-        </Text>
+        <StatusChip status={item.status} />
+        {item.status === 'waiting' && (
+          <TouchableOpacity style={styles.removeBtn} onPress={onRemove}>
+            <MaterialIcons name="close" size={16} color={theme.colors.outline} />
+          </TouchableOpacity>
+        )}
       </View>
-      {item.status === 'waiting' && (
-        <TouchableOpacity style={styles.removeBtn} onPress={onRemove}>
-          <Text style={styles.removeText}>\u2715</Text>
-        </TouchableOpacity>
-      )}
     </View>
   );
 }
@@ -47,59 +73,102 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#1a1a1a',
+    borderBottomColor: theme.colors.outlineVariant,
   },
   left: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 16,
+    flex: 1,
   },
   avatar: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: '#222',
-    borderWidth: 2,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surfaceContainerLowest,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
   name: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '600',
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
+    color: theme.colors.primary,
+  },
+  amountSub: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 12,
+    color: theme.colors.onSurfaceVariant,
+    marginTop: 2,
   },
   error: {
-    color: Colors.palette.red400,
+    fontFamily: theme.fonts.mono,
     fontSize: 11,
+    color: theme.colors.error,
     marginTop: 2,
   },
   right: {
-    alignItems: 'flex-end',
-    marginRight: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  amount: {
-    color: '#fff',
-    fontSize: 16,
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+  },
+  chipActive: {
+    borderColor: `${theme.colors.tertiary}80`,
+    backgroundColor: `${theme.colors.tertiary}0D`,
+  },
+  chipDone: {
+    borderColor: theme.colors.primary,
+  },
+  chipDotMuted: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: theme.colors.outline,
+  },
+  chipDotActive: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: theme.colors.tertiary,
+  },
+  chipTextMuted: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 11,
     fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: theme.colors.onSurfaceVariant,
   },
-  status: {
-    fontSize: 12,
-    marginTop: 2,
+  chipTextActive: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: theme.colors.tertiary,
+  },
+  chipTextDone: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+    color: theme.colors.primary,
   },
   removeBtn: {
-    padding: 6,
-  },
-  removeText: {
-    color: '#555',
-    fontSize: 14,
+    padding: 4,
   },
 });
