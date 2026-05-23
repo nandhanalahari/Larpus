@@ -25,7 +25,7 @@ type RecognizeResponse =
   | { matched: false; confidence: number };
 
 type ParseVoiceResponse =
-  | { intent: 'pay'; amount_usd: number; confidence: number; raw_transcript: string }
+  | { intent: 'pay'; amount_usd: number; confidence: number; raw_transcript: string; due_date?: string | null; note?: string | null }
   | { intent: 'unclear'; confidence: number; fallback: 'keypad' };
 
 type ProcessVoiceResponse =
@@ -34,6 +34,8 @@ type ProcessVoiceResponse =
       amount_usd: number;
       confidence: number;
       raw_transcript: string;
+      due_date?: string | null;
+      note?: string | null;
       contact_id?: string;
     }
   | {
@@ -102,6 +104,7 @@ export type TransferResult = {
   to_wallet: string;
   amount_sol: number;
   amount_usd: number | null;
+  note: string | null;
   status: string;
 };
 
@@ -297,10 +300,10 @@ export const api = {
    * Execute a complete app-level transfer in one call.
    *
    * Checks sender balance → debits sender → credits receiver → writes to
-   * cipher.transactions (from_wallet, to_wallet, amount_sol, direction) →
-   * writes to cipher.ledger so the receiver's notification fires immediately.
+   * kolana.transactions (from_wallet, to_wallet, amount_sol, direction) →
+   * writes to kolana.ledger so the receiver's notification fires immediately.
    *
-   * Uses a synthetic CIPHER_ signature. No Solana devnet call needed —
+   * Uses a synthetic KOLANA_ signature. No Solana devnet call needed —
    * the $1000 MongoDB balance is the source of truth.
    *
    * Throws HTTP 402 if the sender has insufficient balance.
@@ -311,6 +314,7 @@ export const api = {
     amountSol: number;
     amountUsd?: number;
     senderDisplayName?: string | null;
+    note?: string | null;
   }) =>
     requestAt<TransferResult>(LEDGER_BASE, '/transactions/transfer', {
       method: 'POST',
@@ -320,12 +324,13 @@ export const api = {
         amount_sol: params.amountSol,
         amount_usd: params.amountUsd ?? null,
         sender_display_name: params.senderDisplayName ?? null,
+        note: params.note ?? null,
       }),
     }),
 
   /**
    * Step 1 of the payment flow.
-   * Creates a pending record in cipher.transactions with both wallet addresses,
+   * Creates a pending record in kolana.transactions with both wallet addresses,
    * amount, and direction (from → to) before any on-chain call is made.
    * Returns the transaction_id and the stored to_wallet + amount_sol so the
    * caller can drive the Solana transfer from the authoritative record.
@@ -406,10 +411,10 @@ export const api = {
     ),
 
   /**
-   * Write a confirmed transfer to cipher.transactions in MongoDB.
+   * Write a confirmed transfer to kolana.transactions in MongoDB.
    * Records from_wallet, to_wallet, amount_sol/usd, and direction so both
-   * parties can query their history. Also updates cipher.users balances and
-   * pushes to cipher.ledger so the receiver's notification poll fires.
+   * parties can query their history. Also updates kolana.users balances and
+   * pushes to kolana.ledger so the receiver's notification poll fires.
    * Throws on failure — callers should handle and decide UI outcome.
    */
   persistConfirmedPayment: async (params: {
@@ -421,7 +426,7 @@ export const api = {
     senderDisplayName?: string;
   }) => {
     const res = await api.recordTransaction(params);
-    console.log(`[cipher] transaction recorded: sig=${res.signature.slice(0, 20)}...`);
+    console.log(`[kolana] transaction recorded: sig=${res.signature.slice(0, 20)}...`);
   },
 
   createDebt: (params: {

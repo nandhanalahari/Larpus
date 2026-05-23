@@ -1,4 +1,4 @@
-"""One-shot probe: write a tagged row to cipher.transactions + cipher.ledger
+"""One-shot probe: write a tagged row to kolana.transactions + kolana.ledger
 so you can see it in Atlas UI. Run from backend/ with the venv activated.
 """
 
@@ -37,14 +37,14 @@ async def main():
     ledger = await get_ledger_collection().find({"signature": sig}).to_list(length=10)
 
     print()
-    print(f"[probe] cipher.transactions  -> {1 if tx else 0} row")
+    print(f"[probe] kolana.transactions  -> {1 if tx else 0} row")
     if tx:
         print(
             f"        signature={tx['signature']}  "
             f"from={tx['from_wallet']}  to={tx['to_wallet']}  "
             f"amount_sol={tx['amount_sol']}"
         )
-    print(f"[probe] cipher.ledger        -> {len(ledger)} rows")
+    print(f"[probe] kolana.ledger        -> {len(ledger)} rows")
     for r in ledger:
         print(
             f"        wallet={r['wallet']:38s}  direction={r['direction']:8s}  "

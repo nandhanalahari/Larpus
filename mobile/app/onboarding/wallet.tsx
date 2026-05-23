@@ -1,11 +1,28 @@
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { useWallet } from '@/hooks/useWallet';
 import { useAppStore } from '@/store/appStore';
 import { cacheService } from '@/services/cache';
 import { elevenlabsService } from '@/services/elevenlabs';
-import Colors from '@/constants/Colors';
+import {
+  Headline,
+  KolanaField,
+  KolanaButton,
+  KolanaBackButton,
+  StepDots,
+} from '@/components/ui/kolana';
+import { theme } from '@/constants/theme';
 
 export default function WalletSetup() {
   const storedName = useAppStore((s) => s.userName);
@@ -19,10 +36,9 @@ export default function WalletSetup() {
       Alert.alert('Name required', 'Enter your name to continue');
       return;
     }
-
     setLoading(true);
     try {
-      const pubKey = await initWallet(name.trim());
+      await initWallet(name.trim());
       setOnboardingStep('wallet');
       await cacheService.setOnboardingState({
         walletDone: true,
@@ -39,129 +55,100 @@ export default function WalletSetup() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <View style={styles.content}>
-        <View style={styles.step}>
-          <Text style={styles.stepLabel}>STEP 1 OF 3</Text>
-        </View>
-
-        <Text style={styles.logo}>CIPHER</Text>
-        <Text style={styles.tagline}>Point. Speak. Paid.</Text>
-
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Set up your wallet</Text>
-          <Text style={styles.cardDesc}>
-            We'll create a Solana devnet wallet for you. This is free test money for the demo.
-          </Text>
-
-          <Text style={styles.inputLabel}>Your name</Text>
-          <TextInput
-            style={styles.input}
-            value={name}
-            onChangeText={setName}
-            placeholder="Enter your name"
-            placeholderTextColor="#555"
-            autoCapitalize="words"
-            autoFocus
-          />
-        </View>
-
-        <TouchableOpacity
-          style={[styles.btn, loading && styles.btnDisabled]}
-          onPress={handleCreate}
-          disabled={loading}
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.btnText}>
-            {loading ? 'Creating wallet...' : 'Create Wallet'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+          <View style={styles.topRow}>
+            <KolanaBackButton onPress={() => router.back()} />
+            <Text style={styles.stepCount}>1 of 3</Text>
+          </View>
+
+          <StepDots step={1} total={3} />
+
+          <Headline
+            kicker="Wallet"
+            title="Set up your wallet."
+            sub={
+              <Text style={styles.sub}>
+                We'll generate a Solana wallet for you with{' '}
+                <Text style={{ color: theme.colors.success, fontFamily: theme.fonts.bodySemibold }}>
+                  $1,000
+                </Text>{' '}
+                in starting balance.
+              </Text>
+            }
+          />
+
+          <View style={{ marginBottom: 24 }}>
+            <KolanaField
+              label="Your name"
+              value={name}
+              onChangeText={setName}
+              placeholder="Enter your name"
+              autoCapitalize="words"
+            />
+          </View>
+
+          <KolanaButton
+            kind="primary"
+            onPress={handleCreate}
+            disabled={loading}
+          >
+            {loading ? 'Creating wallet…' : 'Generate wallet'}
+          </KolanaButton>
+
+          <TouchableOpacity style={styles.importBtn}>
+            <Text style={styles.importText}>Import existing wallet</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: theme.colors.bg,
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: 24,
-    justifyContent: 'center',
+  scroll: {
+    flexGrow: 1,
+    paddingHorizontal: theme.spacing.marginMobile,
+    paddingTop: 24,
+    paddingBottom: 32,
   },
-  step: {
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 24,
   },
-  stepLabel: {
-    color: Colors.palette.cyan400,
+  stepCount: {
+    fontFamily: theme.fonts.bodyMedium,
     fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 2,
+    color: theme.colors.textDim,
   },
-  logo: {
-    color: Colors.palette.cyan400,
-    fontSize: 36,
-    fontWeight: '900',
-    letterSpacing: 6,
-    marginBottom: 4,
-  },
-  tagline: {
-    color: '#666',
+  sub: {
+    fontFamily: theme.fonts.body,
     fontSize: 14,
-    fontStyle: 'italic',
-    marginBottom: 40,
+    color: theme.colors.textDim,
+    lineHeight: 21,
   },
-  card: {
-    backgroundColor: '#111',
-    borderRadius: 16,
-    padding: 24,
-    marginBottom: 32,
-  },
-  cardTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  cardDesc: {
-    color: '#888',
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 24,
-  },
-  inputLabel: {
-    color: '#666',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    padding: 16,
-    color: '#fff',
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: '#222',
-  },
-  btn: {
-    backgroundColor: Colors.palette.cyan500,
-    paddingVertical: 18,
-    borderRadius: 14,
+  importBtn: {
+    marginTop: 16,
+    paddingVertical: 12,
     alignItems: 'center',
   },
-  btnDisabled: {
-    opacity: 0.5,
-  },
-  btnText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '700',
+  importText: {
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 13,
+    color: theme.colors.textDim,
   },
 });

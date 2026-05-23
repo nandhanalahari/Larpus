@@ -18,7 +18,7 @@ import { TX_CONFIRMATION_TIMEOUT_MS } from '@/constants/timing';
 const RPC_URL = process.env.EXPO_PUBLIC_SOLANA_RPC_URL ?? 'https://api.devnet.solana.com';
 const connection = new Connection(RPC_URL, 'confirmed');
 
-const WALLET_KEY = 'cipher_wallet_secret';
+const WALLET_KEY = 'kolana_wallet_secret';
 
 export const solanaService = {
   createWallet: async (): Promise<{ publicKey: string; created: boolean }> => {

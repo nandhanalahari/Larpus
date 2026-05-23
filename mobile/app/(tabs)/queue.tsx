@@ -1,233 +1,312 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+/**
+ * Queue tab — Kolana Variant A.
+ *
+ * Robinhood-minimal: huge total at the top, sparse rows below, single cyan
+ * "Pay all" CTA, ghost "Clear queue" beneath. Scrollable with bottom padding
+ * to clear the floating tab bar (which sits at bottom: 24, height 64).
+ */
+import { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useQueue } from '@/hooks/useQueue';
 import { useWallet } from '@/hooks/useWallet';
-import { QueueItemRow } from '@/components/QueueItem';
-import { TopAppBar } from '@/components/ui/TopAppBar';
+import { KolanaButton } from '@/components/ui/kolana';
 import { theme } from '@/constants/theme';
+import type { QueueItem } from '@/store/appStore';
 
 export default function QueueScreen() {
-  const { queue, remove, clear, executeAll, totalUsd, canAffordAll } = useQueue();
+  const { queue, remove, clear, executeAll, totalUsd, canAffordAll } =
+    useQueue();
   const { refreshBalance } = useWallet();
+  const [paying, setPaying] = useState(false);
 
   const waitingCount = queue.filter((i) => i.status === 'waiting').length;
-  const hasItems = queue.length > 0;
+
+  const handlePayAll = async () => {
+    if (paying || waitingCount === 0) return;
+    setPaying(true);
+    try {
+      await executeAll();
+      await refreshBalance();
+    } finally {
+      setPaying(false);
+    }
+  };
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <TopAppBar onWalletPress={() => refreshBalance()} />
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Batch Queue</Text>
-          <Text style={styles.subtitle}>Execute pending transactions</Text>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text style={styles.label}>Batch queue</Text>
+
+        <Text style={styles.totalBig}>
+          ${Math.floor(totalUsd).toLocaleString()}
+          <Text style={styles.totalBigDim}>
+            .{(totalUsd % 1).toFixed(2).slice(2) || '00'}
+          </Text>
+        </Text>
+
+        <View style={styles.metaRow}>
+          <Text style={styles.metaText}>
+            {queue.length} {queue.length === 1 ? 'payment' : 'payments'} ·{' '}
+            {waitingCount} waiting
+          </Text>
+          {!canAffordAll && waitingCount > 0 ? (
+            <Text style={styles.warnInline}>insufficient balance</Text>
+          ) : null}
         </View>
 
-        {!hasItems ? (
+        {queue.length === 0 ? (
           <View style={styles.empty}>
             <MaterialIcons
               name="view-list"
-              size={48}
-              color={theme.colors.surfaceContainerHigh}
+              size={36}
+              color={theme.colors.textFaint}
             />
             <Text style={styles.emptyTitle}>No payments queued</Text>
             <Text style={styles.emptyDesc}>
-              Scan faces on the Scan tab to add payments here
+              Scan faces on the Scan tab to add payments here.
             </Text>
           </View>
         ) : (
           <>
-            <View style={styles.summary}>
-              <View style={styles.summaryTop}>
-                <Text style={styles.summaryLabel}>Total Pending</Text>
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{queue.length} TXNS</Text>
-                </View>
-              </View>
-              <Text style={styles.summaryAmount}>
-                ${totalUsd.toFixed(2)}{' '}
-                <Text style={styles.summaryUnit}>USDC</Text>
-              </Text>
-            </View>
-
-            <View style={styles.listCard}>
-              <FlatList
-                data={queue}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <QueueItemRow item={item} onRemove={() => remove(item.id)} />
-                )}
-                style={styles.list}
-                scrollEnabled={false}
+            <Text style={styles.sectionHeader}>Items</Text>
+            {queue.map((item, i) => (
+              <QueueRow
+                key={item.id}
+                item={item}
+                last={i === queue.length - 1}
+                onRemove={() => remove(item.id)}
               />
+            ))}
+
+            <View style={styles.actions}>
+              <KolanaButton
+                kind="primary"
+                icon="send"
+                onPress={handlePayAll}
+                disabled={waitingCount === 0 || paying || !canAffordAll}
+              >
+                {paying
+                  ? 'Sending…'
+                  : `Pay all · $${totalUsd.toFixed(2)}`}
+              </KolanaButton>
+
+              <TouchableOpacity onPress={clear} style={styles.clearBtn}>
+                <Text style={styles.clearText}>Clear queue</Text>
+              </TouchableOpacity>
             </View>
-
-            {!canAffordAll && waitingCount > 0 && (
-              <Text style={styles.warning}>
-                Insufficient balance for all payments
-              </Text>
-            )}
-
-            <TouchableOpacity
-              style={[
-                styles.payAllBtn,
-                waitingCount === 0 && styles.btnDisabled,
-              ]}
-              onPress={executeAll}
-              disabled={waitingCount === 0}
-            >
-              <Text style={styles.payAllText}>Pay All Now</Text>
-              <MaterialIcons
-                name="send"
-                size={18}
-                color={theme.colors.onTertiary}
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.clearBtn} onPress={clear}>
-              <Text style={styles.clearText}>Clear queue</Text>
-            </TouchableOpacity>
           </>
         )}
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
+// ── One queue row ──────────────────────────────────────────────────────
+function QueueRow({
+  item,
+  last,
+  onRemove,
+}: {
+  item: QueueItem;
+  last: boolean;
+  onRemove: () => void;
+}) {
+  const meta = STATUS_META[item.status];
+  return (
+    <View style={[styles.row, !last && styles.rowBorder]}>
+      <View style={[styles.avatar, { backgroundColor: meta.iconBg }]}>
+        <MaterialIcons name={meta.icon} size={16} color={meta.iconColor} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={styles.name} numberOfLines={1}>
+          {item.contact.name}
+        </Text>
+        <Text style={styles.sub} numberOfLines={1}>
+          {meta.label}
+          {item.note ? ` · ${item.note}` : ''}
+          {item.error ? ` · ${item.error}` : ''}
+        </Text>
+      </View>
+      <Text style={styles.amount}>${item.amountUsd.toFixed(2)}</Text>
+      {item.status === 'waiting' ? (
+        <TouchableOpacity onPress={onRemove} hitSlop={10} style={styles.removeBtn}>
+          <MaterialIcons name="close" size={16} color={theme.colors.textDim} />
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.removeBtn} />
+      )}
+    </View>
+  );
+}
+
+const STATUS_META: Record<
+  QueueItem['status'],
+  {
+    label: string;
+    icon: keyof typeof MaterialIcons.glyphMap;
+    iconColor: string;
+    iconBg: string;
+  }
+> = {
+  waiting: {
+    label: 'Waiting',
+    icon: 'schedule',
+    iconColor: theme.colors.textDim,
+    iconBg: 'rgba(230,240,255,0.06)',
+  },
+  sending: {
+    label: 'Sending…',
+    icon: 'bolt',
+    iconColor: theme.colors.accent,
+    iconBg: theme.colors.accent + '1a',
+  },
+  confirmed: {
+    label: 'Confirmed',
+    icon: 'check',
+    iconColor: theme.colors.success,
+    iconBg: theme.colors.success + '1a',
+  },
+  failed: {
+    label: 'Failed',
+    icon: 'close',
+    iconColor: theme.colors.alert,
+    iconBg: theme.colors.alert + '1a',
+  },
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.bg,
   },
-  content: {
-    flex: 1,
+  scroll: {
     paddingHorizontal: theme.spacing.marginMobile,
-    paddingBottom: 24,
-  },
-  header: {
     paddingTop: 24,
-    marginBottom: 24,
+    paddingBottom: 120, // clear floating tab bar
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: theme.colors.onBackground,
+  label: {
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 14,
+    color: theme.colors.textDim,
+    marginBottom: 6,
+  },
+  totalBig: {
+    fontFamily: theme.fonts.display,
+    fontSize: 50,
+    color: theme.colors.text,
+    letterSpacing: -2,
+    lineHeight: 52,
+  },
+  totalBigDim: {
+    color: theme.colors.textDim,
+  },
+  metaRow: {
+    marginTop: 10,
+    marginBottom: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  metaText: {
+    fontFamily: theme.fonts.body,
+    fontSize: 13,
+    color: theme.colors.textDim,
+  },
+  warnInline: {
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 12,
+    color: theme.colors.alert,
+    textTransform: 'lowercase',
+  },
+  sectionHeader: {
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 12,
+    color: theme.colors.textDim,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
     marginBottom: 8,
   },
-  subtitle: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 14,
-    color: theme.colors.onSurfaceVariant,
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 14,
+  },
+  rowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  name: {
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 15,
+    color: theme.colors.text,
+  },
+  sub: {
+    fontFamily: theme.fonts.body,
+    fontSize: 12,
+    color: theme.colors.textDim,
+    marginTop: 2,
+  },
+  amount: {
+    fontFamily: theme.fonts.display,
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  removeBtn: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
   },
   empty: {
-    flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: 80,
-    gap: 12,
+    paddingVertical: 60,
+    gap: 10,
   },
   emptyTitle: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 16,
-    color: theme.colors.onSurfaceVariant,
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 15,
+    color: theme.colors.text,
   },
   emptyDesc: {
-    fontFamily: theme.fonts.mono,
+    fontFamily: theme.fonts.body,
     fontSize: 13,
-    color: theme.colors.onPrimaryContainer,
+    color: theme.colors.textDim,
     textAlign: 'center',
     paddingHorizontal: 32,
   },
-  summary: {
-    borderWidth: 1,
-    borderColor: theme.colors.outlineVariant,
-    backgroundColor: theme.colors.surfaceContainerLowest,
-    padding: 24,
-    marginBottom: 24,
+  actions: {
+    marginTop: 28,
     gap: 12,
-  },
-  summaryTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  summaryLabel: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    color: theme.colors.onSurfaceVariant,
-  },
-  badge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: theme.colors.outlineVariant,
-    backgroundColor: theme.colors.surfaceVariant,
-  },
-  badgeText: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 11,
-    color: theme.colors.primary,
-  },
-  summaryAmount: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: theme.colors.primary,
-    letterSpacing: -0.5,
-  },
-  summaryUnit: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 16,
-    color: theme.colors.onSurfaceVariant,
-  },
-  listCard: {
-    borderWidth: 1,
-    borderColor: theme.colors.outlineVariant,
-    backgroundColor: theme.colors.surface,
-    marginBottom: 16,
-  },
-  list: {
-    maxHeight: 320,
-  },
-  warning: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 13,
-    color: theme.colors.error,
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  payAllBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: theme.colors.tertiary,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 999,
-    alignSelf: 'flex-end',
-    marginBottom: 12,
-  },
-  btnDisabled: {
-    opacity: 0.4,
-  },
-  payAllText: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    color: theme.colors.onTertiary,
   },
   clearBtn: {
     alignSelf: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
   clearText: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 12,
-    color: theme.colors.onSurfaceVariant,
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 13,
+    color: theme.colors.textDim,
   },
 });

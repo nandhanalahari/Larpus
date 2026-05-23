@@ -164,6 +164,7 @@ class InitiateTransactionRequest(BaseModel):
     amount_sol: float
     amount_usd: float | None = None
     sender_display_name: str | None = None
+    note: str | None = None
 
 
 class InitiateTransactionResponse(BaseModel):
@@ -197,6 +198,7 @@ class TransferResponse(BaseModel):
     to_wallet: str
     amount_sol: float
     amount_usd: float | None = None
+    note: str | None = None
     status: str = "confirmed"
 
 

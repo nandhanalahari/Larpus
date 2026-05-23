@@ -1,6 +1,6 @@
 """Transaction history + live deposit polling.
 
-Reads from the `cipher.ledger` collection — a true double-entry view where
+Reads from the `kolana.ledger` collection — a true double-entry view where
 each transfer produces two rows: one `outgoing` for the sender and one
 `incoming` for the receiver. Querying a wallet's history is then a direct
 `{wallet: X}` match.
@@ -65,18 +65,18 @@ async def _resolve_counterparty_names(wallets: set[str]) -> dict[str, str]:
 async def transfer_funds(body: InitiateTransactionRequest):
     """Atomic app-level transfer between two wallets.
 
-    1. Verifies the sender has enough balance in cipher.users (creating the
+    1. Verifies the sender has enough balance in kolana.users (creating the
        account with a $1000 starting grant if it has never been seen before).
-    2. Debits the sender and credits the receiver atomically in cipher.users.
-    3. Writes the confirmed transaction to cipher.transactions with
+    2. Debits the sender and credits the receiver atomically in kolana.users.
+    3. Writes the confirmed transaction to kolana.transactions with
        from_wallet, to_wallet, amount_sol, amount_usd, and direction.
-    4. Mirrors to cipher.ledger so the receiver's notification poll fires
+    4. Mirrors to kolana.ledger so the receiver's notification poll fires
        within its next 3-second cycle.
 
-    Uses a synthetic CIPHER_ signature — no Solana devnet RPC call required.
+    Uses a synthetic KOLANA_ signature — no Solana devnet RPC call required.
     The Solana wallet addresses are used purely as identifiers.
     """
-    signature = f"CIPHER_{uuid4().hex[:24]}"
+    signature = f"KOLANA_{uuid4().hex[:24]}"
 
     try:
         await solana_history.record_confirmed_transfer(
@@ -86,6 +86,7 @@ async def transfer_funds(body: InitiateTransactionRequest):
             amount_sol=body.amount_sol,
             amount_usd=body.amount_usd,
             sender_display_name=body.sender_display_name,
+            note=body.note,
         )
     except InsufficientBalanceError as e:
         raise HTTPException(status_code=402, detail=str(e)) from e
@@ -96,6 +97,7 @@ async def transfer_funds(body: InitiateTransactionRequest):
         to_wallet=body.to_wallet,
         amount_sol=float(body.amount_sol),
         amount_usd=body.amount_usd,
+        note=body.note,
     )
 
 

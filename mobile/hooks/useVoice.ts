@@ -5,11 +5,14 @@ import { useAppStore } from '@/store/appStore';
 import { MIC_TIMEOUT_MS } from '@/constants/timing';
 import { MAX_PAYMENT_USD, MIN_PAYMENT_USD } from '@/constants/thresholds';
 
+// Pronouns that should never be treated as a recipient name mismatch.
+const PRONOUNS = new Set(['him', 'her', 'them', 'he', 'she', 'they', 'this person', 'that person', 'this guy', 'that guy']);
+
 type VoiceResult =
-  | { intent: 'pay'; amount: number; confidence: number; transcript: string; dueDate?: string | null }
-  | { intent: 'unclear'; reason: string; transcript: string; fallback?: 'keypad'; dueDate?: string | null }
+  | { intent: 'pay'; amount: number; confidence: number; transcript: string; dueDate?: string | null; note?: string | null }
+  | { intent: 'unclear'; reason: string; transcript: string; fallback?: 'keypad'; dueDate?: string | null; note?: string | null }
   | { intent: 'invalid'; reason: string; transcript: string; min?: number; max?: number }
-  | { intent: 'confirm_large'; amount: number; confidence: number; transcript: string; dueDate?: string | null };
+  | { intent: 'confirm_large'; amount: number; confidence: number; transcript: string; dueDate?: string | null; note?: string | null };
 
 export function useVoice() {
   const {
@@ -19,6 +22,7 @@ export function useVoice() {
     setParsedAmount,
     recognizedContact,
     setParsedDueDate,
+    setParsedNote,
   } = useAppStore();
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -41,27 +45,31 @@ export function useVoice() {
       try {
         const res = await api.processVoice(uri, recognizedContact?.id) as any;
 
-        // Recipient verification check
+        // Recipient verification — skip for pronouns (him/her/them etc.)
         if (res.intent === 'pay' && res.recipient_name && recognizedContact) {
-          const contactNameLower = recognizedContact.name.toLowerCase();
-          const spokenLower = res.recipient_name.toLowerCase();
-
-          if (!contactNameLower.includes(spokenLower) && !spokenLower.includes(contactNameLower)) {
-            const errorMsg = `Recipient mismatch: Heard "${res.recipient_name}", but paying ${recognizedContact.name}`;
-            setTranscript(errorMsg);
-            setParsedAmount(null);
-            setParsedDueDate(null);
-            return {
-              intent: 'unclear',
-              reason: 'recipient_mismatch',
-              transcript: errorMsg,
-            };
+          const spokenLower = res.recipient_name.toLowerCase().trim();
+          if (!PRONOUNS.has(spokenLower)) {
+            const contactNameLower = recognizedContact.name.toLowerCase();
+            if (!contactNameLower.includes(spokenLower) && !spokenLower.includes(contactNameLower)) {
+              const errorMsg = `Recipient mismatch: Heard "${res.recipient_name}", but paying ${recognizedContact.name}`;
+              setTranscript(errorMsg);
+              setParsedAmount(null);
+              setParsedDueDate(null);
+              setParsedNote(null);
+              return {
+                intent: 'unclear',
+                reason: 'recipient_mismatch',
+                transcript: errorMsg,
+              };
+            }
           }
         }
 
         setTranscript(res.raw_transcript || '');
         const dueDate = res.due_date || null;
+        const note = (res as any).note || null;
         setParsedDueDate(dueDate);
+        setParsedNote(note);
 
         if (res.intent === 'pay') {
           const amount = res.amount_usd;
@@ -83,6 +91,7 @@ export function useVoice() {
               confidence: res.confidence,
               transcript: res.raw_transcript,
               dueDate,
+              note,
             };
           }
           setParsedAmount(amount);
@@ -92,6 +101,7 @@ export function useVoice() {
             confidence: res.confidence,
             transcript: res.raw_transcript,
             dueDate,
+            note,
           };
         }
 
@@ -101,6 +111,7 @@ export function useVoice() {
           fallback: res.fallback,
           transcript: res.raw_transcript || '',
           dueDate,
+          note,
         };
       } catch (err) {
         console.warn('[Voice] processVoice failed:', err);
@@ -112,7 +123,7 @@ export function useVoice() {
         };
       }
     },
-    [recognizedContact, setListening, setTranscript, setParsedAmount, setParsedDueDate],
+    [recognizedContact, setListening, setTranscript, setParsedAmount, setParsedDueDate, setParsedNote],
   );
 
   const startListening = useCallback(async () => {
@@ -159,26 +170,30 @@ export function useVoice() {
       try {
         const result = await api.parseVoice(transcript, recognizedContact.id) as any;
 
-        // Recipient verification check
+        // Recipient verification — skip for pronouns
         if (result.intent === 'pay' && result.recipient_name) {
-          const contactNameLower = recognizedContact.name.toLowerCase();
-          const spokenLower = result.recipient_name.toLowerCase();
-
-          if (!contactNameLower.includes(spokenLower) && !spokenLower.includes(contactNameLower)) {
-            const errorMsg = `Recipient mismatch: Heard "${result.recipient_name}", but paying ${recognizedContact.name}`;
-            setTranscript(errorMsg);
-            setParsedAmount(null);
-            setParsedDueDate(null);
-            return {
-              intent: 'unclear',
-              reason: 'recipient_mismatch',
-              transcript: errorMsg,
-            };
+          const spokenLower = result.recipient_name.toLowerCase().trim();
+          if (!PRONOUNS.has(spokenLower)) {
+            const contactNameLower = recognizedContact.name.toLowerCase();
+            if (!contactNameLower.includes(spokenLower) && !spokenLower.includes(contactNameLower)) {
+              const errorMsg = `Recipient mismatch: Heard "${result.recipient_name}", but paying ${recognizedContact.name}`;
+              setTranscript(errorMsg);
+              setParsedAmount(null);
+              setParsedDueDate(null);
+              setParsedNote(null);
+              return {
+                intent: 'unclear',
+                reason: 'recipient_mismatch',
+                transcript: errorMsg,
+              };
+            }
           }
         }
 
         const dueDate = result.due_date || null;
+        const note = result.note || null;
         setParsedDueDate(dueDate);
+        setParsedNote(note);
 
         if (result.intent === 'pay') {
           const amount = result.amount_usd;
@@ -192,17 +207,18 @@ export function useVoice() {
               confidence: result.confidence,
               transcript,
               dueDate,
+              note,
             };
           setParsedAmount(amount);
-          return { intent: 'pay', amount, confidence: result.confidence, transcript, dueDate };
+          return { intent: 'pay', amount, confidence: result.confidence, transcript, dueDate, note };
         }
-        return { intent: 'unclear', reason: 'unclear', fallback: 'keypad', transcript, dueDate };
+        return { intent: 'unclear', reason: 'unclear', fallback: 'keypad', transcript, dueDate, note };
       } catch (err) {
         console.warn('[Voice] parse failed:', err);
         return { intent: 'unclear', reason: 'api_error', fallback: 'keypad', transcript };
       }
     },
-    [recognizedContact, setParsedAmount, setParsedDueDate, setTranscript],
+    [recognizedContact, setParsedAmount, setParsedDueDate, setParsedNote, setTranscript],
   );
 
   useEffect(() => {

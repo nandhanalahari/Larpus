@@ -1,111 +1,163 @@
-import { Tabs, Redirect } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import { Tabs } from 'expo-router';
+import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { theme } from '@/constants/theme';
-import { useAppStore } from '@/store/appStore';
 
 export const unstable_settings = {
   initialRouteName: 'profile',
 };
 
-function TabIcon({
-  name,
-  focused,
-}: {
-  name: keyof typeof MaterialIcons.glyphMap;
-  focused: boolean;
-}) {
+const TAB_META: Record<
+  string,
+  { icon: keyof typeof MaterialIcons.glyphMap; label: string }
+> = {
+  profile:  { icon: 'person-outline',      label: 'Profile'  },
+  index:    { icon: 'center-focus-strong', label: 'Scan'     },
+  queue:    { icon: 'view-list',           label: 'Queue'    },
+  history:  { icon: 'history',             label: 'History'  },
+};
+
+// Custom tab bar so we have direct access to `state.index` for the
+// selected route. The default `tabBarButton` slot was not flipping
+// the focused style reliably here.
+function KolanaTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   return (
-    <MaterialIcons
-      name={name}
-      size={24}
-      color={focused ? theme.colors.tertiary : theme.colors.onSurfaceVariant}
-    />
+    <View style={styles.tabBarOuter} pointerEvents="box-none">
+      <View style={styles.tabBar}>
+        <BlurView
+          intensity={Platform.OS === 'ios' ? 40 : 28}
+          tint="dark"
+          style={StyleSheet.absoluteFill}
+        />
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: 'rgba(8,12,22,0.72)' },
+          ]}
+        />
+
+        {state.routes.map((route, idx) => {
+          const meta = TAB_META[route.name];
+          if (!meta) return null;
+          const focused = state.index === idx;
+          const { options } = descriptors[route.key];
+
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+            if (!focused && !event.defaultPrevented) {
+              navigation.navigate(route.name as never);
+            }
+          };
+          const onLongPress = () => {
+            navigation.emit({ type: 'tabLongPress', target: route.key });
+          };
+
+          return (
+            <Pressable
+              key={route.key}
+              accessibilityRole="button"
+              accessibilityState={{ selected: focused }}
+              accessibilityLabel={options.tabBarAccessibilityLabel ?? meta.label}
+              testID={(options as any).tabBarTestID}
+              onPress={onPress}
+              onLongPress={onLongPress}
+              style={[styles.item, focused && styles.itemActive]}
+            >
+              <MaterialIcons
+                name={meta.icon}
+                size={18}
+                color={focused ? theme.colors.onAccent : theme.colors.textDim}
+              />
+              {focused ? (
+                <Text style={styles.itemLabel} numberOfLines={1}>
+                  {meta.label}
+                </Text>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
 export default function TabLayout() {
-  const onboardingComplete = useAppStore((s) => s.onboardingComplete);
-  const walletAddress = useAppStore((s) => s.walletAddress);
-
-  if (!onboardingComplete || !walletAddress) {
-    return <Redirect href="/onboarding/login" />;
-  }
-
   return (
     <Tabs
       initialRouteName="profile"
+      tabBar={(props) => <KolanaTabBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: theme.colors.tertiary,
-        tabBarInactiveTintColor: theme.colors.onSurfaceVariant,
-        tabBarLabelStyle: styles.tabLabel,
+        sceneStyle: { backgroundColor: theme.colors.bg },
       }}
     >
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name="account-circle" focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Scan',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name="center-focus-strong" focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="queue"
-        options={{
-          title: 'Queue',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name="view-list" focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="history"
-        options={{
-          title: 'History',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name="history" focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="calendar"
-        options={{
-          title: 'Calendar',
-          tabBarIcon: ({ focused }) => (
-            <TabIcon name="calendar-today" focused={focused} />
-          ),
-        }}
-      />
+      <Tabs.Screen name="profile" />
+      <Tabs.Screen name="index" />
+      <Tabs.Screen name="queue" />
+      <Tabs.Screen name="history" />
     </Tabs>
   );
 }
 
 const styles = StyleSheet.create({
-  tabBar: {
-    backgroundColor: theme.colors.surfaceContainerLowest,
-    borderTopColor: theme.colors.outlineVariant,
-    borderTopWidth: 1,
-    height: 72,
-    paddingBottom: 10,
-    paddingTop: 6,
+  tabBarOuter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingLeft: 14,
+    paddingRight: 14,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 14,
   },
-  tabLabel: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+  tabBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 64,
+    paddingHorizontal: 8,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: theme.colors.borderHard,
+    overflow: 'hidden',
+    elevation: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowOffset: { width: 0, height: 12 },
+    shadowRadius: 20,
+  },
+  item: {
+    flex: 1,
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginHorizontal: 2,
+    paddingHorizontal: 10,
+    borderRadius: 18,
+  },
+  itemActive: {
+    flex: 2,                  // give the pill more room so the label fits
+    backgroundColor: theme.colors.accent,
+  },
+  itemLabel: {
+    fontFamily: theme.fonts.monoSemibold,
+    fontSize: 10,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
+    color: theme.colors.onAccent,
+    includeFontPadding: false,
   },
 });

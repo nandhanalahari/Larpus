@@ -1,10 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const KEYS = {
-  ONBOARDING: 'cipher_onboarding',
-  CONTACTS: 'cipher_contacts_cache',
-  QUEUE: 'cipher_queue_state',
-  SOL_PRICE: 'cipher_sol_price',
+  ONBOARDING: 'kolana_onboarding',
+  CONTACTS: 'kolana_contacts_cache',
+  QUEUE: 'kolana_queue_state',
+  SOL_PRICE: 'kolana_sol_price',
 } as const;
 
 export const cacheService = {

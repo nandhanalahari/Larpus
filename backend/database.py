@@ -21,7 +21,7 @@ async def connect_db():
         tlsAllowInvalidCertificates=True,
         serverSelectionTimeoutMS=10000,
     )
-    _db = _client.cipher
+    _db = _client.kolana
 
     try:
         await _client.admin.command("ping")

@@ -8,6 +8,7 @@ type VoiceLine =
   | 'paid_confirmation'
   | 'deposit_received'
   | 'insufficient_funds'
+  | 'payment_scheduled'
   | 'tx_failed'
   | 'queue_added'
   | 'queue_complete'
@@ -22,6 +23,8 @@ const lineTemplates: Record<VoiceLine, (...args: string[]) => string> = {
   deposit_received: (amount, name) =>
     `Deposit received. ${amount} from ${name}. Confirmed on Solana.`,
   insufficient_funds: () => `Not enough funds. I've saved this and set a reminder for next week.`,
+  payment_scheduled: (amount, name, date) =>
+    `Got it. ${amount} to ${name} scheduled for ${date}. Added to your queue.`,
   tx_failed: () => `Transaction failed. Please try again.`,
   queue_added: (amount, name) => `${amount} added to queue for ${name}.`,
   queue_complete: (total, count) => `Done. ${total} sent to ${count} people.`,
@@ -32,7 +35,7 @@ const lineTemplates: Record<VoiceLine, (...args: string[]) => string> = {
     const last = names.pop();
     return `Not enough for everyone. ${names.join(' and ')} will go through. ${last} will be saved for later.`;
   },
-  welcome: () => `Welcome to CIPHER. Let's set up your wallet.`,
+  welcome: () => `Welcome to KOLANA. Let's set up your wallet.`,
 };
 
 let currentSound: Audio.Sound | null = null;

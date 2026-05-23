@@ -3,16 +3,17 @@ import { useState, useEffect } from 'react';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import { theme } from '@/constants/theme';
 import { VoiceWaveform } from './VoiceWaveform';
-import { CipherIcon } from './ui/CipherIcon';
+import { KolanaIcon } from './ui/KolanaIcon';
 import { useAppStore } from '@/store/appStore';
 
 type Props = {
-  onAmountConfirmed: (amount: number, dueDate?: string | null) => void;
+  onAmountConfirmed: (amount: number, dueDate?: string | null, note?: string | null) => void;
   onCancel: () => void;
   isListening: boolean;
   transcript: string;
   parsedAmount: number | null;
   parsedDueDate: string | null;
+  parsedNote: string | null;
   contactName: string;
   onStartListening: () => void;
   onStopListening: () => void;
@@ -25,6 +26,7 @@ export function VoiceListener({
   transcript,
   parsedAmount,
   parsedDueDate,
+  parsedNote,
   contactName,
   onStartListening,
   onStopListening,
@@ -38,6 +40,7 @@ export function VoiceListener({
     // Reset parsed voice state when mounting to prevent stale data from auto-confirming
     useAppStore.getState().setParsedAmount(null);
     useAppStore.getState().setParsedDueDate(null);
+    useAppStore.getState().setParsedNote(null);
     setConfirmingAmount(null);
   }, []);
 
@@ -86,12 +89,15 @@ export function VoiceListener({
               ${confirmingAmount.toFixed(0)}
             </Text>
           )}
+          {parsedNote ? (
+            <Text style={styles.intentNote}>for {parsedNote}</Text>
+          ) : null}
         </View>
         <VoiceWaveform active={false} />
         <View style={styles.confirmRow}>
           <TouchableOpacity
             style={styles.confirmBtn}
-            onPress={() => onAmountConfirmed(confirmingAmount, parsedDueDate)}
+            onPress={() => onAmountConfirmed(confirmingAmount, parsedDueDate, parsedNote)}
           >
             <Text style={styles.confirmBtnText}>
               {parsedDueDate ? 'Confirm Schedule' : 'Confirm Payment'}
@@ -168,7 +174,7 @@ export function VoiceListener({
         {isProcessing ? (
           <ActivityIndicator size="small" color={theme.colors.tertiary} />
         ) : (
-          <CipherIcon
+          <KolanaIcon
             name={isListening ? 'stop' : 'mic'}
             size={20}
             color={isListening ? theme.colors.error : theme.colors.tertiary}
@@ -239,6 +245,13 @@ const styles = StyleSheet.create({
   },
   payWord: {
     color: theme.colors.tertiary,
+  },
+  intentNote: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 13,
+    color: theme.colors.tertiary,
+    marginTop: 6,
+    letterSpacing: 0.5,
   },
   keypadRow: {
     flexDirection: 'row',

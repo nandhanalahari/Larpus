@@ -10,7 +10,7 @@ type Props = {
   filled?: boolean;
 };
 
-export function CipherIcon({
+export function KolanaIcon({
   name,
   size = 24,
   color = theme.colors.primary,

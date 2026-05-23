@@ -17,8 +17,8 @@ export type IncomingPayment = {
 };
 
 const POLL_MS = 3000;
-const SEEN_STORAGE_PREFIX = '@cipher:incoming_seen:';
-const LAST_TS_STORAGE_PREFIX = '@cipher:incoming_last_ts:';
+const SEEN_STORAGE_PREFIX = '@kolana:incoming_seen:';
+const LAST_TS_STORAGE_PREFIX = '@kolana:incoming_last_ts:';
 const MAX_SEEN_RETAINED = 200;
 // On a fresh launch, deposits older than this are considered "background history"
 // and won't trigger a popup. Anything newer than this WILL pop, even if the app

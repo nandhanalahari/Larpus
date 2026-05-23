@@ -1,17 +1,17 @@
 {
   "expo": {
-    "name": "CIPHER",
-    "slug": "cipher",
+    "name": "KOLANA",
+    "slug": "kolana",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "cipher",
+    "scheme": "kolana",
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "NSCameraUsageDescription": "CIPHER uses the camera to scan faces for payments",
-        "NSMicrophoneUsageDescription": "CIPHER uses the microphone for voice commands"
+        "NSCameraUsageDescription": "KOLANA uses the camera to scan faces for payments",
+        "NSMicrophoneUsageDescription": "KOLANA uses the microphone for voice commands"
       }
     },
     "android": {
@@ -34,13 +34,13 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow CIPHER to access your camera for face scanning"
+          "cameraPermission": "Allow KOLANA to access your camera for face scanning"
         }
       ],
       [
         "expo-av",
         {
-          "microphonePermission": "Allow CIPHER to access your microphone for voice commands"
+          "microphonePermission": "Allow KOLANA to access your microphone for voice commands"
         }
       ],
       "expo-secure-store",

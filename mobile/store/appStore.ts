@@ -16,6 +16,7 @@ export type QueueItem = {
   id: string;
   contact: Contact;
   amountUsd: number;
+  note?: string | null;
   status: 'waiting' | 'sending' | 'confirmed' | 'failed';
   txSignature?: string;
   error?: string;
@@ -75,14 +76,16 @@ type AppState = {
   transcript: string;
   parsedAmount: number | null;
   parsedDueDate: string | null;
+  parsedNote: string | null;
   setListening: (listening: boolean) => void;
   setTranscript: (text: string) => void;
   setParsedAmount: (amount: number | null) => void;
   setParsedDueDate: (dueDate: string | null) => void;
+  setParsedNote: (note: string | null) => void;
 
   // Queue
   queue: QueueItem[];
-  addToQueue: (contact: Contact, amountUsd: number) => void;
+  addToQueue: (contact: Contact, amountUsd: number, note?: string | null) => void;
   updateQueueItem: (id: string, update: Partial<QueueItem>) => void;
   clearQueue: () => void;
   removeFromQueue: (id: string) => void;
@@ -109,7 +112,6 @@ type AppState = {
   setSolPrice: (price: number) => void;
 };
 
-let queueIdCounter = 0;
 
 export const useAppStore = create<AppState>()(
   persist(
@@ -147,20 +149,26 @@ export const useAppStore = create<AppState>()(
   transcript: '',
   parsedAmount: null,
   parsedDueDate: null,
+  parsedNote: null,
   setListening: (listening) => set({ isListening: listening }),
   setTranscript: (text) => set({ transcript: text }),
   setParsedAmount: (amount) => set({ parsedAmount: amount }),
   setParsedDueDate: (dueDate) => set({ parsedDueDate: dueDate }),
+  setParsedNote: (note) => set({ parsedNote: note }),
 
   queue: [],
-  addToQueue: (contact, amountUsd) =>
+  addToQueue: (contact, amountUsd, note) =>
     set((s) => ({
+      // Use Date.now() + random suffix instead of a module-level counter so
+      // newly-added items can't collide with rehydrated persisted IDs after
+      // an app restart.
       queue: [
         ...s.queue,
         {
-          id: `q-${++queueIdCounter}`,
+          id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           contact,
           amountUsd,
+          note: note ?? null,
           status: 'waiting',
         },
       ],
@@ -198,6 +206,9 @@ export const useAppStore = create<AppState>()(
       recognizedContact: null,
       recognitionConfidence: 0,
       requiresConfirmation: false,
+      parsedAmount: null,
+      parsedDueDate: null,
+      parsedNote: null,
       solPrice: null,
       solPriceFetchedAt: null,
     }),
@@ -212,7 +223,7 @@ export const useAppStore = create<AppState>()(
   setSolPrice: (price) => set({ solPrice: price, solPriceFetchedAt: Date.now() }),
     }),
     {
-      name: 'cipher_app_store',
+      name: 'kolana_app_store',
       storage: createJSONStorage(() => AsyncStorage),
       // Only persist user-owned, durable slices. Skip ephemeral UI state
       // (recognizedContact, isListening, transcript) and server-side cached

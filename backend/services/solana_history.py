@@ -149,6 +149,7 @@ async def _mirror_to_ledger(tx_doc: dict) -> None:
         "cluster": tx_doc.get("cluster"),
         "status": tx_doc.get("status", "confirmed"),
         "sender_display_name": tx_doc.get("sender_display_name"),
+        "notes": tx_doc.get("notes"),
         "cached_at": int(time.time()),
     }
 
@@ -187,6 +188,7 @@ async def record_confirmed_transfer(
     amount_sol: float,
     amount_usd: float | None = None,
     sender_display_name: str | None = None,
+    note: str | None = None,
     block_time: int | None = None,
     slot: int | None = None,
 ) -> dict:
@@ -194,7 +196,7 @@ async def record_confirmed_transfer(
     print(
         f"[RECORD] sig={signature[:20]}... "
         f"from={from_wallet[:8]}... to={to_wallet[:8]}... "
-        f"amount_sol={amount_sol} sender={sender_display_name}"
+        f"amount_sol={amount_sol} sender={sender_display_name} note={note!r}"
     )
     settings = get_settings()
     lamports = int(round(amount_sol * LAMPORTS_PER_SOL))
@@ -208,6 +210,7 @@ async def record_confirmed_transfer(
         "amount_sol": float(amount_sol),
         "amount_usd": float(amount_usd) if amount_usd is not None else None,
         "sender_display_name": sender_display_name,
+        "notes": note,
         "cluster": settings.solana_cluster,
         "status": "confirmed",
         "cached_at": int(time.time()),
@@ -215,7 +218,7 @@ async def record_confirmed_transfer(
     }
     is_new = await upsert_transaction_doc(doc)
     print(
-        f"[cipher.transactions] {'INSERTED' if is_new else 'ALREADY EXISTS'} "
+        f"[kolana.transactions] {'INSERTED' if is_new else 'ALREADY EXISTS'} "
         f"sig={signature[:20]}...  "
         f"from={from_wallet[:8]}... -> to={to_wallet[:8]}...  "
         f"amount={amount_sol:.6f} SOL  usd={amount_usd}"

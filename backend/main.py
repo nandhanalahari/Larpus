@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="CIPHER API",
+    title="KOLANA API",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -68,21 +68,22 @@ app.include_router(debts.router, prefix="/api/v1")
 app.include_router(sol_price.router, prefix="/api/v1")
 
 _settings = get_settings()
+
+# Voice is always served locally — it only needs Gemini + ElevenLabs, not InsightFace.
+app.include_router(voice.router, prefix="/api/v1")
+
 if _insightface_available:
-    # Production / fully-loaded: serve everything locally.
+    # Production / fully-loaded: serve face-dependent routes locally too.
     app.include_router(recognize.router, prefix="/api/v1")
     app.include_router(contacts.router, prefix="/api/v1")
-    app.include_router(voice.router, prefix="/api/v1")
     app.include_router(payments.router, prefix="/api/v1")
 elif _settings.upstream_api_base:
-    # Dev box (no InsightFace): forward heavy endpoints to deployed backend.
-    print(f"[proxy] InsightFace missing -- forwarding recognize/voice/contacts/payments -> {_settings.upstream_api_base}")
+    # Dev box (no InsightFace): forward only face-dependent endpoints to deployed backend.
+    print(f"[proxy] InsightFace missing -- forwarding recognize/contacts/payments -> {_settings.upstream_api_base}")
     app.include_router(proxy.router, prefix="/api/v1")
 else:
-    # No upstream configured and no InsightFace: still mount stubs so app boots.
     app.include_router(recognize.router, prefix="/api/v1")
     app.include_router(contacts.router, prefix="/api/v1")
-    app.include_router(voice.router, prefix="/api/v1")
     app.include_router(payments.router, prefix="/api/v1")
 
 

@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { CipherIcon } from './CipherIcon';
+import { KolanaIcon } from './KolanaIcon';
 import { theme } from '@/constants/theme';
 
 type Props = {
@@ -36,20 +36,20 @@ export function TopAppBar({
           style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
           onPress={openWallet}
         >
-          <CipherIcon name="account-balance-wallet" size={22} />
+          <KolanaIcon name="account-balance-wallet" size={22} />
         </Pressable>
       ) : (
         <View style={styles.iconPlaceholder} />
       )}
 
-      <Text style={styles.title}>CIPHER</Text>
+      <Text style={styles.title}>KOLANA</Text>
 
       {showSettings ? (
         <Pressable
           style={({ pressed }) => [styles.iconBtn, pressed && styles.pressed]}
           onPress={openSettings}
         >
-          <CipherIcon
+          <KolanaIcon
             name="settings"
             size={22}
             color={theme.colors.onSurfaceVariant}

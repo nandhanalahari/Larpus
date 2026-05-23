@@ -54,6 +54,7 @@ export function QueueItemRow({ item, onRemove }: Props) {
         <View>
           <Text style={styles.name}>{item.contact.name}</Text>
           <Text style={styles.amountSub}>${item.amountUsd.toFixed(2)}</Text>
+          {item.note ? <Text style={styles.note}>for {item.note}</Text> : null}
           {item.error && <Text style={styles.error}>{item.error}</Text>}
         </View>
       </View>
@@ -103,6 +104,12 @@ const styles = StyleSheet.create({
     fontFamily: theme.fonts.mono,
     fontSize: 12,
     color: theme.colors.onSurfaceVariant,
+    marginTop: 2,
+  },
+  note: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 11,
+    color: theme.colors.tertiary,
     marginTop: 2,
   },
   error: {

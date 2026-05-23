@@ -127,13 +127,6 @@ async def proxy_recognize(request: Request) -> Response:
     return await _forward(request, "recognize")
 
 
-@router.api_route(
-    "/voice/{rest:path}",
-    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-)
-async def proxy_voice(request: Request, rest: str) -> Response:
-    return await _forward(request, f"voice/{rest}")
-
 
 @router.api_route(
     "/contacts",

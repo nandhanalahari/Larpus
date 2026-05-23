@@ -1,13 +1,31 @@
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import { useState, useRef } from 'react';
 import { useAppStore } from '@/store/appStore';
 import { cacheService } from '@/services/cache';
 import { api } from '@/services/api';
-import Colors from '@/constants/Colors';
+import {
+  Headline,
+  KolanaButton,
+  KolanaBackButton,
+  StepDots,
+} from '@/components/ui/kolana';
+import { theme } from '@/constants/theme';
 
-const ANGLES = ['Look straight at the camera', 'Turn slightly left', 'Turn slightly right'] as const;
+const ANGLES = [
+  'Look straight at the camera.',
+  'Turn slightly to your left.',
+  'Turn slightly to your right.',
+] as const;
 
 export default function EnrollSelf() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -16,7 +34,8 @@ export default function EnrollSelf() {
   const [capturing, setCapturing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const cameraRef = useRef<CameraView>(null);
-  const { setOnboardingStep, setSelfContactId, userName, walletAddress } = useAppStore();
+  const { setOnboardingStep, setSelfContactId, userName, walletAddress } =
+    useAppStore();
 
   const enrollOnBackend = async (allPhotos: string[]) => {
     if (!walletAddress) {
@@ -49,7 +68,6 @@ export default function EnrollSelf() {
           [{ text: 'OK', onPress: () => { setPhotos([]); setCurrentAngle(0); } }],
         );
       } else if (msg.includes('409')) {
-        // Already enrolled with this wallet — treat as success and move on.
         setOnboardingStep('self');
         await cacheService.setOnboardingState({
           walletDone: true,
@@ -68,18 +86,17 @@ export default function EnrollSelf() {
   const handleCapture = async () => {
     if (!cameraRef.current || capturing || uploading) return;
     setCapturing(true);
-
     try {
-      const photo = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.7 });
+      const photo = await cameraRef.current.takePictureAsync({
+        base64: true,
+        quality: 0.7,
+      });
       if (!photo?.base64) {
         Alert.alert('Error', 'Failed to capture photo');
-        setCapturing(false);
         return;
       }
-
       const newPhotos = [...photos, photo.base64];
       setPhotos(newPhotos);
-
       if (newPhotos.length < 3) {
         setCurrentAngle(currentAngle + 1);
       } else {
@@ -94,185 +111,200 @@ export default function EnrollSelf() {
 
   if (!permission?.granted) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.permText}>Camera access is needed to enroll your face</Text>
-        <TouchableOpacity style={styles.permBtn} onPress={requestPermission}>
-          <Text style={styles.permBtnText}>Grant Permission</Text>
-        </TouchableOpacity>
-      </View>
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={styles.center}>
+          <Text style={styles.permText}>
+            Camera access is needed to enroll your face
+          </Text>
+          <KolanaButton kind="primary" onPress={requestPermission}>
+            Grant Permission
+          </KolanaButton>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.stepLabel}>STEP 2 OF 3</Text>
-        <Text style={styles.title}>Enroll your face</Text>
-        <Text style={styles.desc}>
-          This helps CIPHER recognize you so no one can accidentally pay themselves.
-        </Text>
-      </View>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <View style={styles.scroll}>
+        <View style={styles.topRow}>
+          <KolanaBackButton onPress={() => router.back()} />
+          <Text style={styles.stepCount}>2 of 3</Text>
+        </View>
 
-      <View style={styles.cameraWrap}>
-        <CameraView ref={cameraRef} style={styles.camera} facing="front">
-          <View style={styles.cameraOverlay}>
-            <View style={styles.faceGuide} />
-          </View>
-        </CameraView>
-      </View>
+        <StepDots step={2} total={3} />
 
-      <View style={styles.bottom}>
+        <Headline
+          title="Enroll your face."
+          sub="Three angles · helps us know it's really you."
+        />
+
+        <View style={styles.cameraWrap}>
+          <CameraView ref={cameraRef} style={styles.camera} facing="front">
+            <View style={styles.cameraOverlay} pointerEvents="none">
+              {/* Corner brackets — the only "HUD" touch reserved for scan moments */}
+              <Corner pos="tl" />
+              <Corner pos="tr" />
+              <Corner pos="bl" />
+              <Corner pos="br" />
+            </View>
+          </CameraView>
+        </View>
+
         <Text style={styles.instruction}>
           {uploading ? 'Enrolling on server…' : ANGLES[currentAngle]}
         </Text>
 
-        <View style={styles.progress}>
+        <View style={styles.dots}>
           {[0, 1, 2].map((i) => (
             <View
               key={i}
               style={[
-                styles.progressDot,
-                i < photos.length && styles.progressDotDone,
-                i === currentAngle && !uploading && styles.progressDotActive,
+                styles.dot,
+                i < photos.length && styles.dotDone,
+                i === currentAngle && !uploading && styles.dotActive,
               ]}
             />
           ))}
         </View>
 
         {uploading ? (
-          <ActivityIndicator size="large" color={Colors.palette.cyan400} />
+          <ActivityIndicator size="large" color={theme.colors.accent} />
         ) : (
-          <TouchableOpacity
-            style={[styles.captureBtn, capturing && styles.btnDisabled]}
+          <KolanaButton
+            kind="primary"
             onPress={handleCapture}
             disabled={capturing}
           >
-            <View style={styles.captureBtnInner} />
-          </TouchableOpacity>
+            {currentAngle < 2 ? 'Capture' : 'Capture & finish'}
+          </KolanaButton>
         )}
       </View>
-    </View>
+    </SafeAreaView>
+  );
+}
+
+function Corner({ pos }: { pos: 'tl' | 'tr' | 'bl' | 'br' }) {
+  const base = {
+    position: 'absolute' as const,
+    width: 24,
+    height: 24,
+    borderColor: '#fff',
+    borderStyle: 'solid' as const,
+  };
+  const inset = 14;
+  if (pos === 'tl')
+    return (
+      <View
+        style={[
+          base,
+          { top: inset, left: inset, borderTopWidth: 1.5, borderLeftWidth: 1.5 },
+        ]}
+      />
+    );
+  if (pos === 'tr')
+    return (
+      <View
+        style={[
+          base,
+          { top: inset, right: inset, borderTopWidth: 1.5, borderRightWidth: 1.5 },
+        ]}
+      />
+    );
+  if (pos === 'bl')
+    return (
+      <View
+        style={[
+          base,
+          { bottom: inset, left: inset, borderBottomWidth: 1.5, borderLeftWidth: 1.5 },
+        ]}
+      />
+    );
+  return (
+    <View
+      style={[
+        base,
+        { bottom: inset, right: inset, borderBottomWidth: 1.5, borderRightWidth: 1.5 },
+      ]}
+    />
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: theme.colors.bg,
   },
-  center: {
+  scroll: {
     flex: 1,
-    backgroundColor: '#000',
+    paddingHorizontal: theme.spacing.marginMobile,
+    paddingTop: 24,
+    paddingBottom: 32,
+  },
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
+    marginBottom: 24,
   },
-  permText: {
-    color: '#aaa',
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  permBtn: {
-    backgroundColor: Colors.palette.cyan500,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  permBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 16,
-  },
-  header: {
-    paddingTop: 80,
-    paddingHorizontal: 24,
-    paddingBottom: 20,
-  },
-  stepLabel: {
-    color: Colors.palette.cyan400,
+  stepCount: {
+    fontFamily: theme.fonts.bodyMedium,
     fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 2,
-    marginBottom: 12,
-  },
-  title: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '800',
-    marginBottom: 8,
-  },
-  desc: {
-    color: '#888',
-    fontSize: 14,
-    lineHeight: 20,
+    color: theme.colors.textDim,
   },
   cameraWrap: {
-    flex: 1,
-    margin: 24,
-    borderRadius: 24,
+    aspectRatio: 1,
+    width: '100%',
+    borderRadius: theme.radius.card,
     overflow: 'hidden',
+    marginBottom: 22,
+    backgroundColor: theme.colors.bgDeep,
   },
   camera: {
     flex: 1,
   },
   cameraOverlay: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  faceGuide: {
-    width: 220,
-    height: 280,
-    borderRadius: 110,
-    borderWidth: 2,
-    borderColor: 'rgba(6, 182, 212, 0.4)',
-    borderStyle: 'dashed',
-  },
-  bottom: {
-    paddingHorizontal: 24,
-    paddingBottom: 50,
-    alignItems: 'center',
+    ...StyleSheet.absoluteFillObject,
   },
   instruction: {
-    color: Colors.palette.cyan400,
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 16,
+    fontFamily: theme.fonts.body,
+    fontSize: 15,
+    color: theme.colors.text,
+    textAlign: 'center',
+    marginBottom: 18,
   },
-  progress: {
+  dots: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 24,
-  },
-  progressDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#333',
-  },
-  progressDotDone: {
-    backgroundColor: Colors.palette.green400,
-  },
-  progressDotActive: {
-    backgroundColor: Colors.palette.cyan400,
-  },
-  captureBtn: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 4,
-    borderColor: '#fff',
-    alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 22,
   },
-  captureBtnInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#fff',
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: 'rgba(230,240,255,0.16)',
   },
-  btnDisabled: {
-    opacity: 0.5,
+  dotDone: {
+    backgroundColor: theme.colors.success,
+    width: 24,
+  },
+  dotActive: {
+    backgroundColor: theme.colors.accent,
+    width: 24,
+  },
+  center: {
+    flex: 1,
+    paddingHorizontal: theme.spacing.marginMobile,
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    gap: 20,
+  },
+  permText: {
+    fontFamily: theme.fonts.body,
+    color: theme.colors.textDim,
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });

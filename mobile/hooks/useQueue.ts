@@ -24,8 +24,8 @@ export function useQueue() {
   const isExecutingRef = useRef(false);
 
   const add = useCallback(
-    (contact: Contact, amountUsd: number) => {
-      addToQueue(contact, amountUsd);
+    (contact: Contact, amountUsd: number, note?: string | null) => {
+      addToQueue(contact, amountUsd, note);
       elevenlabsService.speakLine('queue_added', `$${amountUsd}`, contact.name);
     },
     [addToQueue],
@@ -58,7 +58,7 @@ export function useQueue() {
 
         const amountSol = item.amountUsd / solPrice;
 
-        // Use the cipher.users MongoDB balance — the $1000 starting balance
+        // Use the kolana.users MongoDB balance — the $1000 starting balance
         // is the source of truth, not the Solana devnet balance.
         if (walletBalanceSol < amountSol + FEE_BUFFER_SOL) {
           updateQueueItem(item.id, { status: 'failed', error: 'Insufficient balance' });
@@ -75,13 +75,14 @@ export function useQueue() {
         }
 
         // Single call: check balance → debit sender → credit receiver →
-        // write to cipher.transactions → write to cipher.ledger
+        // write to kolana.transactions → write to kolana.ledger
         const result = await api.transferFunds({
           fromWallet: walletAddress,
           toWallet: item.contact.solanaWalletAddress,
           amountSol,
           amountUsd: item.amountUsd,
           senderDisplayName: userName ?? null,
+          note: item.note ?? null,
         });
 
         api

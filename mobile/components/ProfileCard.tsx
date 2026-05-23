@@ -2,7 +2,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Animated, { SlideInDown, SlideOutDown } from 'react-native-reanimated';
 import { Contact } from '@/store/appStore';
 import { solanaService } from '@/services/solana';
-import { CipherIcon } from '@/components/ui/CipherIcon';
+import { KolanaIcon } from '@/components/ui/KolanaIcon';
 import { theme } from '@/constants/theme';
 
 type Props = {
@@ -94,7 +94,7 @@ export function ProfileCard({
         <View style={styles.actions}>
           {contact.solanaWalletAddress ? (
             <TouchableOpacity style={styles.primaryBtn} onPress={onStartPayment}>
-              <CipherIcon name="fingerprint" size={20} color={theme.colors.onTertiary} />
+              <KolanaIcon name="fingerprint" size={20} color={theme.colors.onTertiary} />
               <Text style={styles.primaryBtnText}>Start Voice Payment</Text>
             </TouchableOpacity>
           ) : (

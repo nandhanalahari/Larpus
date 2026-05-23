@@ -33,12 +33,13 @@ export default function CameraScreen() {
   const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isScanningRef = useRef(false);
   const [paymentResult, setPaymentResult] = useState<{
-    status: 'sending' | 'confirmed' | 'failed' | 'pending';
+    status: 'sending' | 'confirmed' | 'failed' | 'pending' | 'scheduled';
     amountUsd: number;
     amountSol?: number;
     txSignature?: string;
     error?: string;
     dueDate?: string | null;
+    note?: string | null;
   } | null>(null);
 
   const {
@@ -54,6 +55,7 @@ export default function CameraScreen() {
     transcript,
     parsedAmount,
     parsedDueDate,
+    parsedNote,
   } = useAppStore();
 
   const { recognize, reset: resetRecognition } = useFaceRecognition();
@@ -125,11 +127,11 @@ export default function CameraScreen() {
   }, []);
 
   const handleAmountConfirmed = useCallback(
-    async (amount: number, dueDate?: string | null) => {
+    async (amount: number, dueDate?: string | null, note?: string | null) => {
       if (!recognizedContact || !walletAddress) return;
 
       setUIState('payment_status');
-      setPaymentResult({ status: 'sending', amountUsd: amount, dueDate });
+      setPaymentResult({ status: 'sending', amountUsd: amount, dueDate, note });
 
       try {
         const amountSol = usdToSol(amount);
@@ -153,18 +155,15 @@ export default function CameraScreen() {
           return;
         }
 
-        // If a due date is specified, it is a scheduled payment.
-        // Bypasses direct Solana transaction and creates a scheduled debt.
+        // ── Scheduled payment — due date was spoken ──
+        // "pay $20 by Sunday" → save to queue as a scheduled debt, no immediate transfer.
         if (dueDate) {
-          // Persist to backend so both parties see it. Local optimistic add
-          // happens regardless so the UI updates instantly even if the
-          // network is slow or the request fails.
           useAppStore.getState().addDebt({
             id: `debt-${Date.now()}`,
             contactId: recognizedContact.id,
             contactName: recognizedContact.name,
             amountUsd: amount,
-            status: 'pending',
+            status: 'scheduled',
             createdAt: new Date().toISOString(),
             dueDate: new Date(dueDate).toISOString(),
           });
@@ -182,16 +181,26 @@ export default function CameraScreen() {
               .catch((err) => console.warn('[debt] backend create failed:', err));
           }
 
-          // Add to batch queue
-          useAppStore.getState().addToQueue(recognizedContact, amount);
+          useAppStore.getState().addToQueue(recognizedContact, amount, note ?? undefined);
 
           setPaymentResult({
-            status: 'pending',
+            status: 'scheduled',
             amountUsd: amount,
             amountSol,
             dueDate,
           });
-          elevenlabsService.speakLine('insufficient_funds');
+
+          const dueDateFormatted = new Date(dueDate).toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+          });
+          elevenlabsService.speakLine(
+            'payment_scheduled',
+            `$${amount}`,
+            recognizedContact.name,
+            dueDateFormatted,
+          );
           return;
         }
 
@@ -205,6 +214,11 @@ export default function CameraScreen() {
             createdAt: new Date().toISOString(),
             dueDate: new Date(Date.now() + 7 * 86400000).toISOString(),
           });
+          // Also queue it so the user can retry the whole batch later from the
+          // Queue tab once their wallet has been topped up.
+          useAppStore
+            .getState()
+            .addToQueue(recognizedContact, amount, note ?? undefined);
           setPaymentResult({
             status: 'pending',
             amountUsd: amount,
@@ -217,11 +231,11 @@ export default function CameraScreen() {
 
         // ── Execute the transfer via the backend ──
         // POST /transactions/transfer atomically:
-        //   1. Checks sender has enough in cipher.users ($1000 starting balance)
-        //   2. Debits sender, credits receiver in cipher.users
-        //   3. Writes to cipher.transactions with from_wallet, to_wallet, amount
-        //   4. Mirrors to cipher.ledger → receiver notification fires in ~3 s
-        // Uses a CIPHER_ synthetic signature — no Solana devnet call needed.
+        //   1. Checks sender has enough in kolana.users ($1000 starting balance)
+        //   2. Debits sender, credits receiver in kolana.users
+        //   3. Writes to kolana.transactions with from_wallet, to_wallet, amount
+        //   4. Mirrors to kolana.ledger → receiver notification fires in ~3 s
+        // Uses a KOLANA_ synthetic signature — no Solana devnet call needed.
         console.log(
           `[pay] transferring ${amountSol} SOL to ${recognizedContact.solanaWalletAddress.slice(0, 8)}...`,
         );
@@ -231,8 +245,9 @@ export default function CameraScreen() {
           amountSol,
           amountUsd: amount,
           senderDisplayName: userName ?? null,
+          note: note ?? null,
         });
-        console.log(`[cipher] transfer confirmed sig=${result.signature.slice(0, 20)}...`);
+        console.log(`[kolana] transfer confirmed sig=${result.signature.slice(0, 20)}... note=${note ?? 'none'}`);
 
         setPaymentResult({
           status: 'confirmed',
@@ -240,6 +255,7 @@ export default function CameraScreen() {
           amountSol,
           txSignature: result.signature,
           dueDate,
+          note,
         });
 
         elevenlabsService.speakLine('paid_confirmation', `$${amount}`, recognizedContact.name);
@@ -268,10 +284,9 @@ export default function CameraScreen() {
 
   useEffect(() => {
     if (parsedAmount !== null && parsedDueDate !== null && recognizedContact && uiState === 'voice') {
-      // Auto-schedule payment if a date is spoken
-      handleAmountConfirmed(parsedAmount, parsedDueDate);
+      handleAmountConfirmed(parsedAmount, parsedDueDate, parsedNote);
     }
-  }, [parsedAmount, parsedDueDate, recognizedContact, uiState, handleAmountConfirmed]);
+  }, [parsedAmount, parsedDueDate, parsedNote, recognizedContact, uiState, handleAmountConfirmed]);
 
   const handleDismiss = useCallback(() => {
     setUIState('scanning');
@@ -369,6 +384,7 @@ export default function CameraScreen() {
               transcript={transcript}
               parsedAmount={parsedAmount}
               parsedDueDate={parsedDueDate}
+              parsedNote={parsedNote}
               contactName={recognizedContact.name}
               onAmountConfirmed={handleAmountConfirmed}
               onStartListening={startListening}
@@ -389,8 +405,10 @@ export default function CameraScreen() {
             amountSol={paymentResult.amountSol}
             contactName={recognizedContact.name}
             txSignature={paymentResult.txSignature}
+            dueDate={paymentResult.dueDate}
+            note={paymentResult.note}
             error={paymentResult.error}
-            onRetry={() => handleAmountConfirmed(paymentResult.amountUsd, paymentResult.dueDate)}
+            onRetry={() => handleAmountConfirmed(paymentResult.amountUsd, paymentResult.dueDate, paymentResult.note)}
             onDismiss={handleDismiss}
           />
         )}

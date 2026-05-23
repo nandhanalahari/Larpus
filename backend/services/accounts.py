@@ -25,7 +25,7 @@ async def _initial_balance_sol() -> tuple[float, float]:
 
 
 async def ensure_wallet_account(wallet: str, name: str | None = None) -> dict:
-    """Return (or lazily create) a cipher.users account for this wallet.
+    """Return (or lazily create) a kolana.users account for this wallet.
 
     Every new wallet receives $1000 worth of SOL at the current live price.
     Subsequent calls are idempotent — the balance is only initialised once.
@@ -60,7 +60,7 @@ async def ensure_wallet_account(wallet: str, name: str | None = None) -> dict:
     )
     account = await users.find_one({"wallet_address": wallet})
     print(
-        f"[cipher.users] NEW wallet granted "
+        f"[kolana.users] NEW wallet granted "
         f"${STARTING_BALANCE_USD:.0f} starting balance -> "
         f"{balance_sol:.6f} SOL @ ${sol_price:.2f}  "
         f"wallet={wallet[:12]}..."
@@ -105,6 +105,6 @@ async def apply_transfer_balances(from_wallet: str, to_wallet: str, amount_sol: 
         {"$inc": {"balance_sol": amount}, "$set": {"updated_at": now}},
     )
     print(
-        f"[cipher.users] TRANSFER {amount:.6f} SOL  "
+        f"[kolana.users] TRANSFER {amount:.6f} SOL  "
         f"{from_wallet[:12]}... -> {to_wallet[:12]}..."
     )

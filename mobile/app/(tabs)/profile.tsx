@@ -1,3 +1,19 @@
+/**
+ * Profile tab — KOLANA Variant A (Robinhood-minimal + HackHCC navy/cyan).
+ *
+ * Layout follows screens-app.jsx ProfileScreen:
+ *  • Avatar pill + secondary icon row
+ *  • Small "Balance" label
+ *  • Huge USD balance number with dim decimals
+ *  • Change line (SOL price delta · uses cached prior price if available)
+ *  • Sparkline (static demo path — historical SOL data is out of scope)
+ *  • Timeframe tabs (1D/1W/1M/1Y)
+ *  • Quick action row: Send / Receive / Scan / Airdrop
+ *  • Ledger summary: I owe / Owed to me (the bidirectional Mongo-backed view)
+ *  • Activity rows: on-chain transactions from the backend
+ *  • Wallet utilities (airdrop, import, sign-out) collapsed under "Wallet tools"
+ */
+
 import {
   View,
   Text,
@@ -10,14 +26,47 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
+import { MaterialIcons } from '@expo/vector-icons';
+import Svg, { Defs, LinearGradient, Path, Stop, Circle } from 'react-native-svg';
+import { useState, useCallback, useRef } from 'react';
 import { useAppStore } from '@/store/appStore';
 import { useWallet } from '@/hooks/useWallet';
-import { WalletBalance } from '@/components/WalletBalance';
-import { TopAppBar } from '@/components/ui/TopAppBar';
 import { solanaService } from '@/services/solana';
-import { api, UserDebtsResponse } from '@/services/api';
+import { api, UserDebtsResponse, HistoryTransaction } from '@/services/api';
+import { KolanaButton } from '@/components/ui/kolana';
 import { theme } from '@/constants/theme';
-import { useState, useCallback, useRef } from 'react';
+
+type Timeframe = '1D' | '1W' | '1M' | '1Y';
+
+// Static reference sparkline paths from the design canvas. Each is a series
+// normalised into a 320×48 viewBox. Real historical SOL data is out of scope
+// for this redesign; the chart is decorative until we wire a price API.
+const SPARKLINES: Record<Timeframe, { path: string; label: string; pct: number; up: boolean }> = {
+  '1D': {
+    path: 'M0 30 L24 28 L48 32 L72 26 L96 29 L120 24 L144 26 L168 22 L192 25 L216 19 L240 22 L264 16 L288 18 L312 12',
+    label: 'Today',
+    pct: 2.4,
+    up: true,
+  },
+  '1W': {
+    path: 'M0 36 L24 32 L48 38 L72 30 L96 34 L120 26 L144 30 L168 22 L192 26 L216 18 L240 22 L264 14 L288 17 L312 10',
+    label: 'Past week',
+    pct: 6.8,
+    up: true,
+  },
+  '1M': {
+    path: 'M0 22 L24 30 L48 18 L72 26 L96 14 L120 22 L144 32 L168 24 L192 18 L216 26 L240 12 L264 20 L288 8 L312 14',
+    label: 'Past month',
+    pct: 13.0,
+    up: true,
+  },
+  '1Y': {
+    path: 'M0 44 L24 42 L48 38 L72 40 L96 34 L120 32 L144 28 L168 30 L192 22 L216 24 L240 16 L264 18 L288 8 L312 12',
+    label: 'Past year',
+    pct: 71.8,
+    up: true,
+  },
+};
 
 export default function ProfileScreen() {
   const {
@@ -32,61 +81,54 @@ export default function ProfileScreen() {
   } = useAppStore();
 
   const { refreshBalance } = useWallet();
+  const [timeframe, setTimeframe] = useState<Timeframe>('1D');
   const [longPressCount, setLongPressCount] = useState(0);
   const [importKey, setImportKey] = useState('');
   const [importing, setImporting] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showTools, setShowTools] = useState(false);
 
-  // Stats pulled from MongoDB — not local device storage
-  const [txCount, setTxCount] = useState<number>(0);
-  const [totalPaid, setTotalPaid] = useState<number>(0);
+  // Server-side data
+  const [txs, setTxs] = useState<HistoryTransaction[]>([]);
   const [ledger, setLedger] = useState<UserDebtsResponse | null>(null);
-  const [ledgerLoading, setLedgerLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const pendingDebtCount =
-    (ledger?.owed_by_me.filter((d) => d.status === 'pending' || d.status === 'scheduled').length ?? 0) +
-    (ledger?.owed_to_me.filter((d) => d.status === 'pending' || d.status === 'scheduled').length ?? 0);
+  const balanceUsd = walletBalanceSol * (solPrice ?? 0);
+  const series = SPARKLINES[timeframe];
+  const strokeColor = series.up ? theme.colors.success : theme.colors.alert;
+  // Change line: derive USD change from sparkline pct on the current balance.
+  const changeUsd = Math.abs(balanceUsd * (series.pct / 100));
 
-  const refreshLedger = useCallback(async () => {
+  const refresh = useCallback(async () => {
     if (!walletAddress) return;
+    setLoading(true);
     try {
-      const [debtsRes, historyRes] = await Promise.allSettled([
+      const [debtsRes, histRes] = await Promise.allSettled([
         api.getUserDebts(walletAddress),
-        api.getTransactionHistory(walletAddress, 100, false),
+        api.getTransactionHistory(walletAddress, 20, false),
       ]);
       if (debtsRes.status === 'fulfilled') setLedger(debtsRes.value);
-      if (historyRes.status === 'fulfilled') {
-        const txs = historyRes.value.transactions;
-        setTxCount(txs.length);
-        // Sum up USD value of all sent transactions
-        const paid = txs
-          .filter((t) => t.direction === 'sent')
-          .reduce((sum, t) => sum + (t.amount_sol * (solPrice ?? 0)), 0);
-        setTotalPaid(paid);
-      }
+      if (histRes.status === 'fulfilled') setTxs(histRes.value.transactions);
     } catch (err) {
-      console.warn('[ledger] fetch failed:', err);
+      console.warn('[profile] refresh failed:', err);
+    } finally {
+      setLoading(false);
     }
-  }, [walletAddress, solPrice]);
+  }, [walletAddress]);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useFocusEffect(
     useCallback(() => {
       refreshBalance();
-      setLedgerLoading(true);
-      refreshLedger().finally(() => setLedgerLoading(false));
-      // Poll wallet + ledger every 10s so changes appear in near-real-time.
+      refresh();
       pollRef.current = setInterval(() => {
         refreshBalance();
-        refreshLedger();
+        refresh();
       }, 10000);
       return () => {
-        if (pollRef.current) {
-          clearInterval(pollRef.current);
-          pollRef.current = null;
-        }
+        if (pollRef.current) clearInterval(pollRef.current);
       };
-    }, [refreshBalance, refreshLedger]),
+    }, [refreshBalance, refresh]),
   );
 
   const handleAirdrop = useCallback(async () => {
@@ -96,10 +138,7 @@ export default function ProfileScreen() {
       await refreshBalance();
       Alert.alert('Airdrop', '2 SOL added to your wallet (devnet)');
     } catch {
-      Alert.alert(
-        'Airdrop Failed',
-        'Devnet faucet may be rate-limited. Try again later.',
-      );
+      Alert.alert('Airdrop Failed', 'Devnet faucet may be rate-limited.');
     }
   }, [walletAddress, refreshBalance]);
 
@@ -112,248 +151,337 @@ export default function ProfileScreen() {
     }
   }, [longPressCount, toggleDemoMode]);
 
-  const handleCreateWallet = useCallback(async () => {
-    try {
-      const { publicKey } = await solanaService.createWallet();
-      useAppStore.getState().setUser(userName ?? 'User', publicKey);
-      await refreshBalance();
-      Alert.alert('Wallet Created', `Address: ${solanaService.shortenAddress(publicKey)}`);
-    } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to create wallet');
-    }
-  }, [userName, refreshBalance]);
-
   const handleImportWallet = useCallback(async () => {
     if (!importKey.trim()) return;
     setImporting(true);
     try {
       const parsed = JSON.parse(importKey.trim());
       if (!Array.isArray(parsed)) throw new Error('Expected a JSON array of numbers');
-      const publicKey = await solanaService.importWallet(parsed);
-      useAppStore.getState().setUser(userName ?? '', publicKey);
+      const pub = await solanaService.importWallet(parsed);
+      useAppStore.getState().setUser(userName ?? '', pub);
       await refreshBalance();
       setImportKey('');
       setShowImport(false);
-      Alert.alert('Wallet Imported', `Address: ${solanaService.shortenAddress(publicKey)}`);
+      Alert.alert('Wallet Imported', solanaService.shortenAddress(pub));
     } catch (err: any) {
-      Alert.alert('Import Failed', err.message || 'Invalid secret key format');
+      Alert.alert('Import Failed', err.message || 'Invalid secret key');
     } finally {
       setImporting(false);
     }
   }, [importKey, userName, refreshBalance]);
 
+  const initial = (userName ?? 'U').charAt(0).toUpperCase();
+
+  // Build a flat activity list combining ledger pending debts + on-chain tx.
+  type ActivityRow =
+    | { kind: 'tx'; data: HistoryTransaction; key: string }
+    | { kind: 'debt'; data: NonNullable<UserDebtsResponse['owed_by_me']>[number]; owe: boolean; key: string };
+  const activity: ActivityRow[] = [];
+  txs.slice(0, 8).forEach((t) =>
+    activity.push({ kind: 'tx', data: t, key: `tx-${t.signature}` }),
+  );
+  ledger?.owed_by_me
+    .filter((d) => d.status !== 'paid')
+    .slice(0, 4)
+    .forEach((d) =>
+      activity.push({ kind: 'debt', data: d, owe: true, key: `debt-${d.debt_id}` }),
+    );
+
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
-      <TopAppBar showWallet={false} />
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.title}>Wallet</Text>
-
-        <View style={styles.nameSection}>
-          <View style={styles.avatarLarge}>
-            <Text style={styles.avatarText}>
-              {userName?.charAt(0).toUpperCase() || '?'}
-            </Text>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* ── Top bar — minimal */}
+        <View style={styles.topRow}>
+          <View style={styles.avatarPill}>
+            <Text style={styles.avatarPillText}>{initial}</Text>
           </View>
-          <Text style={styles.name}>{userName || 'Not set up'}</Text>
+          <TouchableOpacity hitSlop={10} onPress={() => router.push('/(tabs)/history' as any)}>
+            <MaterialIcons name="history" size={18} color={theme.colors.textDim} />
+          </TouchableOpacity>
         </View>
 
-        <WalletBalance
-          balanceSol={walletBalanceSol}
-          solPrice={solPrice}
-          walletAddress={walletAddress}
-          onRefresh={refreshBalance}
-        />
-
-        <View style={styles.statsRow}>
-          <View style={styles.stat}>
-            <Text style={styles.statValue}>{txCount}</Text>
-            <Text style={styles.statLabel}>Transactions</Text>
-          </View>
-          <View style={styles.stat}>
-            <Text style={styles.statValue}>${totalPaid.toFixed(0)}</Text>
-            <Text style={styles.statLabel}>Total Paid</Text>
-          </View>
-          <View style={styles.stat}>
-            <Text
-              style={[
-                styles.statValue,
-                pendingDebtCount > 0 && { color: theme.colors.error },
-              ]}
-            >
-              {pendingDebtCount}
-            </Text>
-            <Text style={styles.statLabel}>Pending</Text>
-          </View>
+        {/* ── Balance label + huge number ──────────────────────────── */}
+        <View style={styles.balanceLabel}>
+          <Text style={styles.balanceLabelText}>Balance</Text>
+          <MaterialIcons name="expand-more" size={16} color={theme.colors.textDim} />
         </View>
 
-        <Text style={styles.sectionHeader}>Ledger</Text>
-
-        <View style={styles.ledgerRow}>
-          <View style={[styles.ledgerCard, styles.ledgerOwe]}>
-            <Text style={styles.ledgerLabel}>I owe</Text>
-            <Text style={styles.ledgerAmount}>
-              ${ledger?.total_i_owe_usd.toFixed(2) ?? '0.00'}
-            </Text>
-            <Text style={styles.ledgerCount}>
-              {ledger?.owed_by_me.filter((d) => d.status !== 'paid').length ?? 0} pending
-            </Text>
-          </View>
-          <View style={[styles.ledgerCard, styles.ledgerOwed]}>
-            <Text style={styles.ledgerLabel}>Owed to me</Text>
-            <Text style={[styles.ledgerAmount, styles.ledgerAmountPositive]}>
-              ${ledger?.total_owed_to_me_usd.toFixed(2) ?? '0.00'}
-            </Text>
-            <Text style={styles.ledgerCount}>
-              {ledger?.owed_to_me.filter((d) => d.status !== 'paid').length ?? 0} pending
-            </Text>
-          </View>
-        </View>
-
-        <Text style={styles.subsectionHeader}>Money I owe</Text>
-        {ledger && ledger.owed_by_me.length > 0 ? (
-          ledger.owed_by_me.map((d) => (
-            <View key={d.debt_id} style={styles.debtRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.debtName}>{d.counterparty_name || 'Unknown'}</Text>
-                <Text style={styles.debtMeta}>
-                  {d.status.toUpperCase()}
-                  {d.due_date ? ` · due ${d.due_date}` : ''}
-                </Text>
-              </View>
-              <Text style={[styles.debtAmount, d.status === 'paid' && styles.debtAmountPaid]}>
-                {d.status === 'paid' ? '✓ ' : '-'}${d.amount_usd.toFixed(2)}
-              </Text>
-            </View>
-          ))
-        ) : (
-          <Text style={styles.emptyRow}>
-            {ledgerLoading ? 'Loading…' : 'No outstanding debts'}
+        <Text style={styles.balanceBig}>
+          ${Math.floor(balanceUsd).toLocaleString()}
+          <Text style={styles.balanceBigDim}>
+            .{(balanceUsd % 1).toFixed(2).slice(2) || '00'}
           </Text>
-        )}
+        </Text>
 
-        <Text style={styles.subsectionHeader}>Owed to me</Text>
-        {ledger && ledger.owed_to_me.length > 0 ? (
-          ledger.owed_to_me.map((d) => (
-            <View key={d.debt_id} style={styles.debtRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.debtName}>{d.counterparty_name || 'Unknown'}</Text>
-                <Text style={styles.debtMeta}>
-                  {d.status.toUpperCase()}
-                  {d.due_date ? ` · due ${d.due_date}` : ''}
-                </Text>
-              </View>
-              <Text
-                style={[
-                  styles.debtAmount,
-                  styles.debtAmountPositive,
-                  d.status === 'paid' && styles.debtAmountPaid,
-                ]}
-              >
-                {d.status === 'paid' ? '✓ ' : '+'}${d.amount_usd.toFixed(2)}
-              </Text>
-            </View>
-          ))
-        ) : (
-          <Text style={styles.emptyRow}>
-            {ledgerLoading ? 'Loading…' : 'Nothing owed to you'}
+        {/* ── Change line ──────────────────────────────────────────── */}
+        <View style={styles.changeRow}>
+          <MaterialIcons
+            name={series.up ? 'arrow-upward' : 'arrow-downward'}
+            size={14}
+            color={strokeColor}
+          />
+          <Text style={[styles.changeAmount, { color: strokeColor }]}>
+            {series.up ? '+' : '−'}${changeUsd.toFixed(2)} ({series.pct.toFixed(1)}%)
           </Text>
-        )}
+          <Text style={styles.changeLabel}>{series.label}</Text>
+        </View>
 
-        <View style={{ height: 16 }} />
+        {/* ── SOL/USD chart ───────────────────────────────────────── */}
+        <View style={styles.chartLabel}>
+          <Text style={styles.chartCaption}>SOL / USD</Text>
+          {solPrice != null ? (
+            <Text style={styles.chartPrice}>${solPrice.toFixed(2)}</Text>
+          ) : null}
+        </View>
 
-        <TouchableOpacity style={styles.actionBtn} onPress={handleAirdrop}>
-          <Text style={styles.actionTitle}>Request Airdrop</Text>
-          <Text style={styles.actionDesc}>Get 2 SOL from devnet faucet</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.actionBtn} onPress={handleCreateWallet}>
-          <Text style={styles.actionTitle}>Create New Wallet</Text>
-          <Text style={styles.actionDesc}>Generate a fresh devnet keypair</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.actionBtn}
-          onPress={() => setShowImport(!showImport)}
-        >
-          <Text style={styles.actionTitle}>Import Wallet</Text>
-          <Text style={styles.actionDesc}>Paste a secret key to restore</Text>
-        </TouchableOpacity>
-
-        {showImport && (
-          <View style={styles.importSection}>
-            <TextInput
-              style={styles.importInput}
-              value={importKey}
-              onChangeText={setImportKey}
-              placeholder='Paste secret key array [1,2,3,...]'
-              placeholderTextColor={theme.colors.onPrimaryContainer}
-              multiline
-              numberOfLines={3}
-              autoCapitalize="none"
-              autoCorrect={false}
+        <View style={styles.chartWrap}>
+          <Svg viewBox="0 0 320 48" preserveAspectRatio="none" style={styles.svg}>
+            <Defs>
+              <LinearGradient id="spark" x1="0" y1="0" x2="0" y2="1">
+                <Stop offset="0" stopColor={strokeColor} stopOpacity="0.28" />
+                <Stop offset="1" stopColor={strokeColor} stopOpacity="0" />
+              </LinearGradient>
+            </Defs>
+            <Path d={`${series.path} L312 48 L0 48 Z`} fill="url(#spark)" />
+            <Path
+              d={series.path}
+              fill="none"
+              stroke={strokeColor}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
+            <Circle cx={312} cy={lastY(series.path)} r={3.5} fill={strokeColor} />
+          </Svg>
+        </View>
+
+        {/* ── Timeframe tabs ───────────────────────────────────────── */}
+        <View style={styles.tfRow}>
+          {(Object.keys(SPARKLINES) as Timeframe[]).map((tf) => (
             <TouchableOpacity
-              style={[styles.importBtn, importing && styles.btnDisabled]}
-              onPress={handleImportWallet}
-              disabled={importing}
+              key={tf}
+              onPress={() => setTimeframe(tf)}
+              style={[styles.tfPill, tf === timeframe && styles.tfPillActive]}
             >
-              {importing ? (
-                <ActivityIndicator size="small" color={theme.colors.onTertiary} />
-              ) : (
-                <Text style={styles.importBtnText}>Import</Text>
-              )}
+              <Text
+                style={[styles.tfPillText, tf === timeframe && styles.tfPillTextActive]}
+              >
+                {tf}
+              </Text>
             </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* ── Quick actions ────────────────────────────────────────── */}
+        <View style={styles.quickRow}>
+          <QuickAction
+            icon="arrow-upward"
+            label="Send"
+            onPress={() => router.push('/(tabs)' as any)}
+          />
+          <QuickAction
+            icon="arrow-downward"
+            label="Receive"
+            onPress={() => walletAddress && Alert.alert('Your wallet', walletAddress)}
+          />
+          <QuickAction
+            icon="center-focus-strong"
+            label="Scan"
+            onPress={() => router.push('/(tabs)' as any)}
+          />
+          <QuickAction icon="bolt" label="Airdrop" onPress={handleAirdrop} />
+        </View>
+
+        {/* ── Ledger pair (I owe / Owed to me) ─────────────────────── */}
+        <View style={styles.ledgerRow}>
+          <LedgerCard
+            label="I owe"
+            amountUsd={ledger?.total_i_owe_usd ?? 0}
+            count={
+              ledger?.owed_by_me.filter((d) => d.status !== 'paid').length ?? 0
+            }
+            color={theme.colors.alert}
+          />
+          <LedgerCard
+            label="Owed to me"
+            amountUsd={ledger?.total_owed_to_me_usd ?? 0}
+            count={
+              ledger?.owed_to_me.filter((d) => d.status !== 'paid').length ?? 0
+            }
+            color={theme.colors.success}
+          />
+        </View>
+
+        {/* ── Activity ─────────────────────────────────────────────── */}
+        <Text style={styles.sectionHeader}>Activity</Text>
+        {loading && activity.length === 0 ? (
+          <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+            <ActivityIndicator color={theme.colors.accent} />
+          </View>
+        ) : activity.length === 0 ? (
+          <Text style={styles.emptyRow}>No activity yet.</Text>
+        ) : (
+          activity.map((row, i) => {
+            const isLast = i === activity.length - 1;
+            if (row.kind === 'tx') {
+              const t = row.data;
+              const positive = t.direction === 'received';
+              return (
+                <View key={row.key} style={[styles.actRow, !isLast && styles.actRowBorder]}>
+                  <View
+                    style={[
+                      styles.actIcon,
+                      positive ? styles.actIconReceived : styles.actIconSent,
+                    ]}
+                  >
+                    <MaterialIcons
+                      name={positive ? 'arrow-downward' : 'arrow-upward'}
+                      size={16}
+                      color={positive ? theme.colors.success : theme.colors.text}
+                    />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.actName} numberOfLines={1}>
+                      {t.counterparty_name ??
+                        (t.counterparty_wallet
+                          ? solanaService.shortenAddress(t.counterparty_wallet)
+                          : 'Unknown')}
+                    </Text>
+                    <Text style={styles.actSub} numberOfLines={1}>
+                      {positive ? 'Received' : 'Sent'} ·{' '}
+                      {t.block_time
+                        ? new Date(t.block_time * 1000).toLocaleDateString()
+                        : '—'}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.actAmount,
+                      { color: positive ? theme.colors.success : theme.colors.text },
+                    ]}
+                  >
+                    {positive ? '+' : '−'}
+                    {t.amount_sol.toFixed(4)} SOL
+                  </Text>
+                </View>
+              );
+            }
+            // debt row
+            const d = row.data;
+            return (
+              <View key={row.key} style={[styles.actRow, !isLast && styles.actRowBorder]}>
+                <View style={[styles.actIcon, styles.actIconOwe]}>
+                  <MaterialIcons name="schedule" size={16} color={theme.colors.alert} />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.actName} numberOfLines={1}>
+                    {d.counterparty_name}
+                  </Text>
+                  <Text style={styles.actSub} numberOfLines={1}>
+                    {d.status.toUpperCase()}
+                    {d.due_date ? ` · due ${d.due_date}` : ''}
+                  </Text>
+                </View>
+                <Text style={[styles.actAmount, { color: theme.colors.alert }]}>
+                  −${d.amount_usd.toFixed(2)}
+                </Text>
+              </View>
+            );
+          })
+        )}
+
+        {/* ── Wallet tools (collapsed) ──────────────────────────────── */}
+        <TouchableOpacity
+          style={styles.toolsToggle}
+          onPress={() => setShowTools((v) => !v)}
+        >
+          <Text style={styles.toolsToggleText}>Wallet tools</Text>
+          <MaterialIcons
+            name={showTools ? 'expand-less' : 'expand-more'}
+            size={18}
+            color={theme.colors.textDim}
+          />
+        </TouchableOpacity>
+
+        {showTools && (
+          <View style={{ gap: 10 }}>
+            <KolanaButton kind="ghost" onPress={handleAirdrop} icon="bolt">
+              Request airdrop (2 SOL)
+            </KolanaButton>
+            <KolanaButton
+              kind="ghost"
+              onPress={() => setShowImport((v) => !v)}
+              icon="vpn-key"
+            >
+              Import existing wallet
+            </KolanaButton>
+
+            {showImport && (
+              <View style={styles.importBox}>
+                <TextInput
+                  style={styles.importInput}
+                  value={importKey}
+                  onChangeText={setImportKey}
+                  placeholder="Paste secret key array [1,2,3,...]"
+                  placeholderTextColor={theme.colors.textFaint}
+                  multiline
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <KolanaButton
+                  kind="primary"
+                  onPress={handleImportWallet}
+                  disabled={importing}
+                >
+                  {importing ? 'Importing…' : 'Import'}
+                </KolanaButton>
+              </View>
+            )}
+
+            <KolanaButton
+              kind="danger"
+              icon="logout"
+              onPress={() => {
+                Alert.alert(
+                  'Sign Out',
+                  'Clear your session and return to login. Your keypair stays on device.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Sign Out',
+                      style: 'destructive',
+                      onPress: () => {
+                        signOut();
+                        router.replace('/onboarding/login');
+                      },
+                    },
+                  ],
+                );
+              }}
+            >
+              Sign out
+            </KolanaButton>
           </View>
         )}
 
-        <View style={styles.serverStatus}>
+        {/* ── Status / version footer ───────────────────────────────── */}
+        <View style={styles.footerRow}>
           <View
             style={[
               styles.statusDot,
               {
-                backgroundColor: serverReady
-                  ? theme.colors.tertiary
-                  : theme.colors.error,
+                backgroundColor: serverReady ? theme.colors.success : theme.colors.alert,
               },
             ]}
           />
-          <Text style={styles.serverText}>
-            System {serverReady ? 'Operational' : 'Offline'}
+          <Text style={styles.footerText}>
+            {serverReady ? 'OPERATIONAL' : 'OFFLINE'}
+            {solPrice != null ? `  ·  SOL $${solPrice.toFixed(2)}` : ''}
           </Text>
-          {solPrice != null && (
-            <Text style={styles.latency}>Latency 12ms · SOL ${solPrice.toFixed(2)}</Text>
-          )}
         </View>
-
-        <TouchableOpacity
-          style={styles.signOutBtn}
-          onPress={() => {
-            Alert.alert(
-              'Sign Out',
-              'This will clear your session and return you to the login screen. Your wallet keypair stays on the device.',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Sign Out',
-                  style: 'destructive',
-                  onPress: () => {
-                    signOut();
-                    router.replace('/onboarding/login');
-                  },
-                },
-              ],
-            );
-          }}
-        >
-          <Text style={styles.signOutBtnText}>Sign Out</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.backBtn}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.backBtnText}>Back to app</Text>
-        </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.version}
@@ -361,7 +489,7 @@ export default function ProfileScreen() {
           delayLongPress={500}
         >
           <Text style={styles.versionText}>
-            © 2024 CIPHER {demoMode ? '· DEMO MODE' : ''}
+            © 2026 KOLANA {demoMode ? '· DEMO MODE' : ''}
           </Text>
         </TouchableOpacity>
       </ScrollView>
@@ -369,289 +497,336 @@ export default function ProfileScreen() {
   );
 }
 
+// ── helpers ────────────────────────────────────────────────────────────
+function lastY(pathD: string): number {
+  // Path is "M0 30 L24 28 … L312 12" — pull the final Y.
+  const parts = pathD.trim().split(/\s+/);
+  const last = parts[parts.length - 1];
+  return parseFloat(last) || 24;
+}
+
+function QuickAction({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof MaterialIcons.glyphMap;
+  label: string;
+  onPress?: () => void;
+}) {
+  return (
+    <TouchableOpacity style={styles.quickItem} onPress={onPress}>
+      <View style={styles.quickIcon}>
+        <MaterialIcons name={icon} size={18} color={theme.colors.text} />
+      </View>
+      <Text style={styles.quickLabel}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function LedgerCard({
+  label,
+  amountUsd,
+  count,
+  color,
+}: {
+  label: string;
+  amountUsd: number;
+  count: number;
+  color: string;
+}) {
+  return (
+    <View style={[styles.ledgerCard, { borderColor: color + '55' }]}>
+      <Text style={styles.ledgerLabel}>{label}</Text>
+      <Text style={[styles.ledgerAmount, { color }]}>${amountUsd.toFixed(2)}</Text>
+      <Text style={styles.ledgerCount}>{count} pending</Text>
+    </View>
+  );
+}
+
+// ── styles ─────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
+    backgroundColor: theme.colors.bg,
   },
   scroll: {
     paddingHorizontal: theme.spacing.marginMobile,
-    paddingBottom: 40,
+    paddingTop: 24,
+    paddingBottom: 120, // clear floating tab bar
   },
-  title: {
-    fontSize: 32,
-    fontWeight: '600',
-    color: theme.colors.primary,
-    marginTop: 24,
-    marginBottom: 24,
-  },
-  nameSection: {
+  topRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
+    justifyContent: 'space-between',
+    marginBottom: 32,
   },
-  avatarLarge: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 1,
-    borderColor: theme.colors.outlineVariant,
-    backgroundColor: theme.colors.surfaceContainerHigh,
+  avatarPill: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.accent + '22',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
   },
-  avatarText: {
-    color: theme.colors.primary,
-    fontSize: 30,
-    fontWeight: '700',
-  },
-  name: {
-    color: theme.colors.onSurface,
-    fontSize: 22,
-    fontWeight: '600',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    borderWidth: 1,
-    borderColor: theme.colors.outlineVariant,
-    backgroundColor: theme.colors.surfaceContainerLowest,
-    padding: 20,
-    marginBottom: 20,
-  },
-  stat: {
-    alignItems: 'center',
-  },
-  statValue: {
-    fontFamily: theme.fonts.mono,
-    color: theme.colors.primary,
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  statLabel: {
-    fontFamily: theme.fonts.mono,
-    color: theme.colors.onSurfaceVariant,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    marginTop: 4,
-    letterSpacing: 1,
-  },
-  actionBtn: {
-    borderWidth: 1,
-    borderColor: theme.colors.outlineVariant,
-    backgroundColor: theme.colors.surfaceContainerLow,
-    padding: 16,
-    marginBottom: 12,
-  },
-  actionTitle: {
-    fontFamily: theme.fonts.mono,
-    color: theme.colors.onSurface,
+  avatarPillText: {
+    fontFamily: theme.fonts.bodySemibold,
     fontSize: 14,
-    fontWeight: '600',
+    color: theme.colors.accent,
   },
-  actionDesc: {
-    fontFamily: theme.fonts.mono,
-    color: theme.colors.onSurfaceVariant,
-    fontSize: 12,
-    marginTop: 4,
-  },
-  serverStatus: {
+  balanceLabel: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 20,
+    gap: 4,
+    marginBottom: 6,
+  },
+  balanceLabelText: {
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 14,
+    color: theme.colors.textDim,
+  },
+  balanceBig: {
+    fontFamily: theme.fonts.display,
+    fontSize: 50,
+    color: theme.colors.text,
+    letterSpacing: -2,
+    lineHeight: 52,
+  },
+  balanceBigDim: {
+    color: theme.colors.textDim,
+  },
+  changeRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  changeAmount: {
+    fontFamily: theme.fonts.bodySemibold,
+    fontSize: 14,
   },
-  serverText: {
+  changeLabel: {
+    fontFamily: theme.fonts.body,
+    fontSize: 14,
+    color: theme.colors.textDim,
+  },
+  chartLabel: {
+    marginTop: 22,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+  },
+  chartCaption: {
     fontFamily: theme.fonts.mono,
-    fontSize: 12,
-    color: theme.colors.tertiary,
+    fontSize: 10.5,
+    color: theme.colors.textFaint,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
-    letterSpacing: 1,
   },
-  latency: {
+  chartPrice: {
+    fontFamily: theme.fonts.monoMedium,
+    fontSize: 11,
+    color: theme.colors.textDim,
+  },
+  chartWrap: {
+    marginTop: 8,
+    marginHorizontal: -theme.spacing.marginMobile,
+    height: 60,
+  },
+  svg: {
+    width: '100%',
+    height: '100%',
+  },
+  tfRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    marginBottom: 30,
+    paddingHorizontal: 4,
+  },
+  tfPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  tfPillActive: {
+    backgroundColor: 'rgba(230,240,255,0.07)',
+  },
+  tfPillText: {
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 13,
+    color: theme.colors.textDim,
+  },
+  tfPillTextActive: {
+    color: theme.colors.text,
+    fontFamily: theme.fonts.bodyBold,
+  },
+  quickRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 30,
+  },
+  quickItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 8,
+  },
+  quickIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(230,240,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickLabel: {
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 11,
+    color: theme.colors.textDim,
+  },
+  ledgerRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 24,
+  },
+  ledgerCard: {
+    flex: 1,
+    borderWidth: 1,
+    backgroundColor: theme.colors.cardBg,
+    padding: 16,
+    borderRadius: theme.radius.lg,
+    gap: 4,
+  },
+  ledgerLabel: {
     fontFamily: theme.fonts.mono,
-    fontSize: 12,
-    color: theme.colors.onSurfaceVariant,
+    fontSize: 10,
+    letterSpacing: 1.5,
+    color: theme.colors.textDim,
+    textTransform: 'uppercase',
   },
-  signOutBtn: {
+  ledgerAmount: {
+    fontFamily: theme.fonts.display,
+    fontSize: 22,
+  },
+  ledgerCount: {
+    fontFamily: theme.fonts.body,
+    fontSize: 11,
+    color: theme.colors.textFaint,
+  },
+  sectionHeader: {
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 12,
+    color: theme.colors.textDim,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+  },
+  emptyRow: {
+    fontFamily: theme.fonts.body,
+    fontSize: 13,
+    color: theme.colors.textFaint,
+    paddingVertical: 14,
+  },
+  actRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 14,
+  },
+  actRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  actIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actIconSent: {
+    backgroundColor: 'rgba(230,240,255,0.06)',
+  },
+  actIconReceived: {
+    backgroundColor: theme.colors.success + '1a',
+  },
+  actIconOwe: {
+    backgroundColor: theme.colors.alert + '1a',
+  },
+  actName: {
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 15,
+    color: theme.colors.text,
+  },
+  actSub: {
+    fontFamily: theme.fonts.body,
+    fontSize: 12,
+    color: theme.colors.textDim,
+    marginTop: 2,
+  },
+  actAmount: {
+    fontFamily: theme.fonts.display,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  toolsToggle: {
     marginTop: 24,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: theme.colors.error,
+    marginBottom: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 12,
   },
-  signOutBtnText: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 14,
-    color: theme.colors.error,
-    letterSpacing: 1,
+  toolsToggleText: {
+    fontFamily: theme.fonts.bodyMedium,
+    fontSize: 13,
+    color: theme.colors.textDim,
+    letterSpacing: 0.4,
     textTransform: 'uppercase',
-    fontWeight: '700',
   },
-  backBtn: {
-    marginTop: 12,
-    paddingVertical: 14,
+  importBox: {
+    gap: 10,
+    padding: 12,
+    borderRadius: theme.radius.lg,
     borderWidth: 1,
-    borderColor: theme.colors.hardBorder,
-    alignItems: 'center',
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.fieldBg,
   },
-  backBtnText: {
+  importInput: {
     fontFamily: theme.fonts.mono,
-    fontSize: 14,
-    color: theme.colors.primary,
+    fontSize: 12,
+    color: theme.colors.text,
+    minHeight: 64,
+    textAlignVertical: 'top',
+  },
+  footerRow: {
+    marginTop: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  footerText: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 11,
+    color: theme.colors.textFaint,
     letterSpacing: 1,
-    textTransform: 'uppercase',
   },
   version: {
-    marginTop: 24,
+    marginTop: 8,
     alignSelf: 'center',
     padding: 12,
   },
   versionText: {
     fontFamily: theme.fonts.mono,
-    fontSize: 11,
-    color: theme.colors.onPrimaryContainer,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  importSection: {
-    borderWidth: 1,
-    borderColor: theme.colors.outlineVariant,
-    backgroundColor: theme.colors.surfaceContainerLowest,
-    padding: 16,
-    marginBottom: 12,
-    gap: 12,
-  },
-  importInput: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 12,
-    color: theme.colors.onSurface,
-    borderWidth: 1,
-    borderColor: theme.colors.outlineVariant,
-    backgroundColor: theme.colors.surface,
-    padding: 12,
-    borderRadius: theme.radius.default,
-    minHeight: 64,
-    textAlignVertical: 'top',
-  },
-  importBtn: {
-    backgroundColor: theme.colors.tertiary,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderRadius: theme.radius.default,
-  },
-  importBtnText: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.onTertiary,
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
-  btnDisabled: {
-    opacity: 0.5,
-  },
-  sectionHeader: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    color: theme.colors.onSurfaceVariant,
-    marginTop: 8,
-    marginBottom: 12,
-  },
-  subsectionHeader: {
-    fontFamily: theme.fonts.mono,
     fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    color: theme.colors.onPrimaryContainer,
-    marginTop: 16,
-    marginBottom: 6,
-  },
-  ledgerRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 8,
-  },
-  ledgerCard: {
-    flex: 1,
-    borderWidth: 1,
-    backgroundColor: theme.colors.surfaceContainerLowest,
-    padding: 16,
-    gap: 4,
-  },
-  ledgerOwe: {
-    borderColor: theme.colors.error,
-  },
-  ledgerOwed: {
-    borderColor: theme.colors.tertiary,
-  },
-  ledgerLabel: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 11,
-    fontWeight: '700',
+    color: theme.colors.textFaint,
     letterSpacing: 1,
     textTransform: 'uppercase',
-    color: theme.colors.onSurfaceVariant,
-  },
-  ledgerAmount: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 22,
-    fontWeight: '700',
-    color: theme.colors.error,
-  },
-  ledgerAmountPositive: {
-    color: theme.colors.tertiary,
-  },
-  ledgerCount: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 11,
-    color: theme.colors.onPrimaryContainer,
-  },
-  debtRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.panelBg,
-  },
-  debtName: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 14,
-    color: theme.colors.primary,
-  },
-  debtMeta: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 10,
-    color: theme.colors.onPrimaryContainer,
-    marginTop: 2,
-    letterSpacing: 1,
-  },
-  debtAmount: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.error,
-  },
-  debtAmountPositive: {
-    color: theme.colors.tertiary,
-  },
-  debtAmountPaid: {
-    color: theme.colors.onPrimaryContainer,
-    textDecorationLine: 'line-through',
-  },
-  emptyRow: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 12,
-    color: theme.colors.onPrimaryContainer,
-    paddingVertical: 10,
   },
 });

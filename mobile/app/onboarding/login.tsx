@@ -3,7 +3,6 @@ import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
@@ -11,9 +10,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { MaterialIcons } from '@expo/vector-icons';
-import { CipherIcon } from '@/components/ui/CipherIcon';
 import { useAppStore } from '@/store/appStore';
+import {
+  Headline,
+  KolanaField,
+  KolanaButton,
+} from '@/components/ui/kolana';
 import { theme } from '@/constants/theme';
 
 export default function LoginScreen() {
@@ -27,8 +29,8 @@ export default function LoginScreen() {
 
   const handleContinue = () => {
     if (!canContinue) return;
-    // Returning user — wallet already provisioned on device. Skip the
-    // wallet + enrollment + first-contact steps and drop them in the app.
+    // Returning user — wallet + enrollment already provisioned on device.
+    // Skip the wallet + enroll + first-contact steps and drop into the app.
     const { walletAddress, selfEnrolled } = useAppStore.getState();
     if (walletAddress && selfEnrolled) {
       useAppStore.getState().completeOnboarding();
@@ -41,7 +43,7 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
-        style={styles.flex}
+        style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
@@ -49,88 +51,52 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.brandWrap}>
-            <View style={styles.logoCircle}>
-              <CipherIcon name="lock" size={28} color={theme.colors.tertiary} />
-            </View>
-            <Text style={styles.brand}>CIPHER</Text>
-            <Text style={styles.tagline}>Pay anyone with a glance</Text>
+          <Text style={styles.brand}>KOLANA</Text>
+
+          <Headline title="Welcome back." sub="Sign in to your wallet." />
+
+          <View style={{ gap: 14 }}>
+            <KolanaField
+              label="Email"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="you@example.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoComplete="email"
+              autoCorrect={false}
+            />
+            <KolanaField
+              label="Password"
+              value={password}
+              onChangeText={setPassword}
+              placeholder="••••••••"
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoComplete="password"
+              rightIcon={showPassword ? 'visibility' : 'visibility-off'}
+              onRightIconPress={() => setShowPassword((v) => !v)}
+            />
           </View>
 
-          <View style={styles.formWrap}>
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Your email address</Text>
-              <TextInput
-                style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                placeholder="you@example.com"
-                placeholderTextColor={theme.colors.onPrimaryContainer}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="email"
-              />
-            </View>
+          <TouchableOpacity style={styles.forgotBtn}>
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </TouchableOpacity>
 
-            <View style={styles.fieldGroup}>
-              <Text style={styles.label}>Choose a password</Text>
-              <View style={styles.passwordRow}>
-                <TextInput
-                  style={[styles.input, styles.passwordInput]}
-                  value={password}
-                  onChangeText={setPassword}
-                  placeholder="min. 8 characters"
-                  placeholderTextColor={theme.colors.onPrimaryContainer}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  autoComplete="password-new"
-                />
-                <TouchableOpacity
-                  style={styles.eyeBtn}
-                  onPress={() => setShowPassword((v) => !v)}
-                  hitSlop={10}
-                >
-                  <MaterialIcons
-                    name={showPassword ? 'visibility' : 'visibility-off'}
-                    size={20}
-                    color={theme.colors.onPrimaryContainer}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.continueBtn,
-                canContinue ? styles.continueBtnActive : styles.continueBtnDisabled,
-              ]}
+          <View style={{ marginTop: 28 }}>
+            <KolanaButton
+              kind="primary"
               onPress={handleContinue}
               disabled={!canContinue}
-              activeOpacity={0.85}
             >
-              <Text
-                style={[
-                  styles.continueText,
-                  canContinue ? styles.continueTextActive : styles.continueTextDisabled,
-                ]}
-              >
-                Continue
-              </Text>
-              <MaterialIcons
-                name="chevron-right"
-                size={20}
-                color={canContinue ? theme.colors.onTertiary : theme.colors.onPrimaryContainer}
-              />
-            </TouchableOpacity>
+              Sign in
+            </KolanaButton>
+          </View>
 
-            <TouchableOpacity
-              style={styles.switchBtn}
-              onPress={() => router.replace('/onboarding/signup')}
-            >
-              <Text style={styles.switchText}>
-                Don’t have an account? <Text style={styles.switchLink}>Sign up</Text>
-              </Text>
+          <View style={styles.switchWrap}>
+            <Text style={styles.switchText}>New here? </Text>
+            <TouchableOpacity onPress={() => router.replace('/onboarding/signup')}>
+              <Text style={styles.switchLink}>Create account</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -142,123 +108,44 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.black,
+    backgroundColor: theme.colors.bg,
   },
-  flex: { flex: 1 },
   scroll: {
     flexGrow: 1,
-    paddingHorizontal: 24,
-    paddingTop: 24,
+    paddingHorizontal: theme.spacing.marginMobile,
+    paddingTop: 32,
     paddingBottom: 32,
-    justifyContent: 'space-between',
-  },
-  brandWrap: {
-    alignItems: 'center',
-    marginTop: 24,
-    gap: 16,
-  },
-  logoCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: theme.colors.panelBg,
-    borderWidth: 1,
-    borderColor: theme.colors.hardBorder,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   brand: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 28,
+    fontFamily: theme.fonts.display,
+    fontSize: 18,
     fontWeight: '700',
-    letterSpacing: 6,
-    color: theme.colors.primary,
+    letterSpacing: 4,
+    color: theme.colors.text,
+    marginBottom: 56,
   },
-  tagline: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 12,
-    letterSpacing: 1.5,
-    color: theme.colors.onSurfaceVariant,
-    textTransform: 'uppercase',
+  forgotBtn: {
+    marginTop: 12,
+    alignSelf: 'flex-start',
   },
-  formWrap: {
-    marginTop: 40,
-    gap: 20,
-  },
-  fieldGroup: {
-    gap: 8,
-  },
-  label: {
-    fontFamily: theme.fonts.mono,
+  forgotText: {
+    fontFamily: theme.fonts.bodyMedium,
     fontSize: 13,
-    color: theme.colors.onSurface,
+    color: theme.colors.accent,
   },
-  input: {
-    height: 56,
-    paddingHorizontal: 20,
-    borderRadius: 999,
-    backgroundColor: theme.colors.surfaceContainerLow,
-    borderWidth: 1,
-    borderColor: theme.colors.outlineVariant,
-    color: theme.colors.primary,
-    fontFamily: theme.fonts.mono,
-    fontSize: 14,
-  },
-  passwordRow: {
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  passwordInput: {
-    paddingRight: 52,
-  },
-  eyeBtn: {
-    position: 'absolute',
-    right: 18,
-    height: 56,
-    justifyContent: 'center',
-  },
-  continueBtn: {
-    marginTop: 8,
-    height: 56,
-    borderRadius: 999,
+  switchWrap: {
+    marginTop: 32,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-  },
-  continueBtnActive: {
-    backgroundColor: theme.colors.tertiary,
-  },
-  continueBtnDisabled: {
-    backgroundColor: theme.colors.surfaceContainerLow,
-    borderWidth: 1,
-    borderColor: theme.colors.outlineVariant,
-  },
-  continueText: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-  },
-  continueTextActive: {
-    color: theme.colors.onTertiary,
-  },
-  continueTextDisabled: {
-    color: theme.colors.onPrimaryContainer,
-  },
-  switchBtn: {
-    alignItems: 'center',
-    paddingVertical: 12,
-    marginTop: 4,
   },
   switchText: {
-    fontFamily: theme.fonts.mono,
-    fontSize: 12,
-    color: theme.colors.onSurfaceVariant,
+    fontFamily: theme.fonts.body,
+    fontSize: 13,
+    color: theme.colors.textDim,
   },
   switchLink: {
-    color: theme.colors.tertiary,
-    fontWeight: '700',
+    fontFamily: theme.fonts.bodySemibold,
+    fontSize: 13,
+    color: theme.colors.accent,
   },
 });

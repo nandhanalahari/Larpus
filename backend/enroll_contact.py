@@ -20,7 +20,7 @@ import sys
 import urllib.request
 
 
-DEFAULT_BASE_URL = os.getenv("CIPHER_API_URL", "http://134.209.216.232:8000/api/v1")
+DEFAULT_BASE_URL = os.getenv("KOLANA_API_URL", "http://134.209.216.232:8000/api/v1")
 
 
 def encode_file(path: str) -> str:
@@ -46,7 +46,7 @@ def post(url: str, body: dict, timeout: float = 60.0) -> tuple[int, dict | str]:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Enroll a contact in the CIPHER backend.")
+    p = argparse.ArgumentParser(description="Enroll a contact in the KOLANA backend.")
     p.add_argument("photos", nargs="+", help="One or more JPEG/PNG paths (3 photos recommended)")
     p.add_argument("--name", required=True, help="Contact display name")
     p.add_argument("--owner", default="cli-test-user", help="Owner wallet address / user id")

@@ -63,7 +63,7 @@ async def main() -> int:
         return 1
 
     client = AsyncIOMotorClient(uri)
-    db = client.get_database("cipher")
+    db = client.get_database("kolana")
     txs = db.transactions
     contacts = db.contacts
 
