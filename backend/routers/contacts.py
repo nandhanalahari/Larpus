@@ -9,6 +9,11 @@ router = APIRouter()
 
 ANGLES = ["straight", "left", "right"]
 
+# Above this cosine similarity, we consider it the SAME person and replace
+# their existing contact rather than creating a duplicate. Same threshold the
+# recognize endpoint treats as "confident match".
+FACE_OVERRIDE_THRESHOLD = 0.85
+
 
 @router.post("/contacts")
 async def create_contact(req: CreateContactRequest):
@@ -31,6 +36,33 @@ async def create_contact(req: CreateContactRequest):
         })
 
     contacts_col = get_contacts_collection()
+
+    # Face override: if the new face matches an existing contact above threshold,
+    # delete the old one. Same face = same identity. Latest enrollment wins.
+    # Runs BEFORE the wallet dup check so the deleted contact's wallet frees up.
+    override_pipeline = [
+        {
+            "$vectorSearch": {
+                "index": "vector_index",
+                "path": "face_embeddings.embedding",
+                "queryVector": embeddings[0]["embedding"],
+                "numCandidates": 50,
+                "limit": 1,
+            }
+        },
+        {"$addFields": {"_score": {"$meta": "vectorSearchScore"}}},
+        {"$project": {"_id": 1, "name": 1, "_score": 1}},
+    ]
+    matches = await contacts_col.aggregate(override_pipeline).to_list(length=1)
+    overridden = None
+    if matches and matches[0].get("_score", 0.0) >= FACE_OVERRIDE_THRESHOLD:
+        overridden = matches[0]
+        await contacts_col.delete_one({"_id": overridden["_id"]})
+        print(
+            f"[Contacts] Face override: deleted {overridden['name']} "
+            f"({overridden['_id']}) score={matches[0]['_score']:.3f} "
+            f"before enrolling {req.name}"
+        )
 
     if req.solana_wallet_address:
         existing = await contacts_col.find_one({
