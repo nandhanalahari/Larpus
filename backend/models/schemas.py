@@ -1,0 +1,128 @@
+from pydantic import BaseModel
+from datetime import datetime
+
+
+# ── /recognize ──
+
+class RecognizeRequest(BaseModel):
+    image_base64: str
+    user_id: str
+
+
+class LastPayment(BaseModel):
+    amount_usd: float
+    paid_at: str
+
+
+class PendingDebt(BaseModel):
+    debt_id: str
+    amount_usd: float
+    due_date: str
+
+
+class ContactInfo(BaseModel):
+    id: str
+    name: str
+    phone: str | None = None
+    solana_wallet_address: str | None = None
+    last_payment: LastPayment | None = None
+    pending_debts: list[PendingDebt] = []
+    total_outstanding_usd: float = 0.0
+
+
+class RecognizeMatchResponse(BaseModel):
+    matched: bool = True
+    confidence: float
+    requires_confirmation: bool = False
+    contact: ContactInfo
+
+
+class RecognizeNoMatchResponse(BaseModel):
+    matched: bool = False
+    confidence: float
+
+
+# ── /voice/parse ──
+
+class VoiceParseRequest(BaseModel):
+    transcript: str
+    contact_id: str
+
+
+class VoiceParsePayResponse(BaseModel):
+    intent: str = "pay"
+    amount_usd: float
+    confidence: float
+    raw_transcript: str
+
+
+class VoiceParseUnclearResponse(BaseModel):
+    intent: str = "unclear"
+    confidence: float = 0.0
+    fallback: str = "keypad"
+
+
+# ── /contacts ──
+
+class CreateContactRequest(BaseModel):
+    owner_user_id: str
+    name: str
+    phone: str | None = None
+    solana_wallet_address: str | None = None
+    face_images_base64: list[str]
+
+
+class CreateContactResponse(BaseModel):
+    contact_id: str
+    name: str
+    embeddings_stored: int
+    created_at: str
+
+
+# ── /payments/execute ──
+
+class ExecutePaymentRequest(BaseModel):
+    user_id: str
+    contact_id: str
+    amount_usd: float
+    from_wallet: str
+    to_wallet: str
+
+
+class PaymentPaidResponse(BaseModel):
+    status: str = "paid"
+    transaction_signature: str
+    amount_sol: float
+    sol_price: float
+    confirmed_at: str
+    elevenlabs_line: str = "paid_confirmation"
+    debt_id: str
+
+
+class PaymentPendingResponse(BaseModel):
+    status: str = "pending"
+    reason: str
+    wallet_balance_sol: float
+    required_sol: float
+    calendar_event_created: bool = False
+    due_date: str
+    elevenlabs_line: str = "insufficient_funds"
+    debt_id: str
+
+
+# ── /sol/price ──
+
+class SolPriceResponse(BaseModel):
+    sol_usd: float
+    fetched_at: str
+    source: str = "coingecko"
+
+
+# ── Health ──
+
+class HealthResponse(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
+    status: str = "ok"
+    model_loaded: bool = False
+    memory_percent: float | None = None

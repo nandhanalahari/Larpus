@@ -187,7 +187,7 @@ export default function HistoryScreen() {
 
         <TouchableOpacity
           style={styles.returnBtn}
-          onPress={() => router.push('/(tabs)/')}
+          onPress={() => router.push('/(tabs)' as any)}
         >
           <MaterialIcons name="arrow-back" size={18} color={theme.colors.primary} />
           <Text style={styles.returnText}>Return to Scan</Text>

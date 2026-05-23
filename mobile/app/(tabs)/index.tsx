@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import { ScanReticle } from '@/components/ScanReticle';
 import { solanaService } from '@/services/solana';
 import { elevenlabsService } from '@/services/elevenlabs';
 import { theme } from '@/constants/theme';
+import { CAMERA_FRAME_INTERVAL_MS } from '@/constants/timing';
 
 type UIState = 'scanning' | 'profile' | 'voice' | 'payment_status';
 
@@ -26,6 +27,9 @@ export default function CameraScreen() {
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [uiState, setUIState] = useState<UIState>('scanning');
+  const cameraRef = useRef<CameraView>(null);
+  const scanIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isScanningRef = useRef(false);
   const [paymentResult, setPaymentResult] = useState<{
     status: 'sending' | 'confirmed' | 'failed' | 'pending';
     amountUsd: number;
@@ -47,7 +51,7 @@ export default function CameraScreen() {
     parsedAmount,
   } = useAppStore();
 
-  const { reset: resetRecognition } = useFaceRecognition();
+  const { recognize, reset: resetRecognition } = useFaceRecognition();
   const { isListening, startListening, stopListening } = useVoice();
   const { canAfford, usdToSol, refreshBalance, fetchSolPrice } = useWallet();
 
@@ -67,6 +71,44 @@ export default function CameraScreen() {
       setUIState('profile');
     }
   }, [recognizedContact]);
+
+  const captureAndRecognize = useCallback(async () => {
+    if (isScanningRef.current) return;
+    if (!cameraRef.current) return;
+
+    isScanningRef.current = true;
+    try {
+      const photo = await cameraRef.current.takePictureAsync({
+        base64: true,
+        quality: 0.3,
+        skipProcessing: true,
+      });
+      if (photo?.base64) {
+        await recognize(photo.base64);
+      }
+    } catch {
+      // camera not ready or frame capture failed -- silently retry next interval
+    } finally {
+      isScanningRef.current = false;
+    }
+  }, [recognize]);
+
+  useEffect(() => {
+    if (uiState === 'scanning' && !recognizedContact && permission?.granted) {
+      scanIntervalRef.current = setInterval(captureAndRecognize, CAMERA_FRAME_INTERVAL_MS);
+    } else {
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
+    };
+  }, [uiState, recognizedContact, permission?.granted, captureAndRecognize]);
 
   const handleStartPayment = useCallback(() => {
     setUIState('voice');
@@ -223,7 +265,7 @@ export default function CameraScreen() {
 
   return (
     <View style={styles.container}>
-      <CameraView style={styles.camera} facing="back">
+      <CameraView ref={cameraRef} style={styles.camera} facing="back">
         {showScanChrome && (
           <View style={styles.overlay} pointerEvents="box-none">
             <View style={[styles.statusWrap, { paddingTop: insets.top + 16 }]}>

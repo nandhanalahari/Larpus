@@ -1,0 +1,18 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+motor==3.6.0
+pymongo[srv]==4.9.0
+python-dotenv==1.0.1
+pydantic==2.9.0
+pydantic-settings==2.5.0
+numpy>=1.26.0
+Pillow>=10.4.0
+httpx==0.27.0
+google-generativeai==0.8.0
+psutil==6.0.0
+
+# Face recognition -- installs cleanly on Linux/macOS.
+# On Windows, requires Visual C++ Build Tools or skip for local testing.
+# insightface==0.7.3
+# onnxruntime>=1.20.0
+# opencv-python-headless>=4.10.0

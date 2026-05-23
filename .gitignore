@@ -39,8 +39,16 @@ coverage/
 # Editor
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+insightface_models/
 
 # Logs
 *.log
