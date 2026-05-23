@@ -72,9 +72,11 @@ type AppState = {
   isListening: boolean;
   transcript: string;
   parsedAmount: number | null;
+  parsedDueDate: string | null;
   setListening: (listening: boolean) => void;
   setTranscript: (text: string) => void;
   setParsedAmount: (amount: number | null) => void;
+  setParsedDueDate: (dueDate: string | null) => void;
 
   // Queue
   queue: QueueItem[];
@@ -137,9 +139,11 @@ export const useAppStore = create<AppState>((set) => ({
   isListening: false,
   transcript: '',
   parsedAmount: null,
+  parsedDueDate: null,
   setListening: (listening) => set({ isListening: listening }),
   setTranscript: (text) => set({ transcript: text }),
   setParsedAmount: (amount) => set({ parsedAmount: amount }),
+  setParsedDueDate: (dueDate) => set({ parsedDueDate: dueDate }),
 
   queue: [],
   addToQueue: (contact, amountUsd) =>

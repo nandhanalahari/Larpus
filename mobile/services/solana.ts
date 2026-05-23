@@ -101,4 +101,38 @@ export const solanaService = {
     await connection.confirmTransaction(sig, 'confirmed');
     return sig;
   },
+
+  /** Return the raw secret key bytes so callers can export / display them. */
+  getSecretKeyArray: async (): Promise<number[] | null> => {
+    const stored = await SecureStore.getItemAsync(WALLET_KEY);
+    if (!stored) return null;
+    return JSON.parse(stored);
+  },
+
+  /**
+   * Send SOL denominated in USD.  Fetches the live SOL/USD price from
+   * CoinGecko, converts, then fires the transaction on devnet and waits
+   * for on-chain confirmation before returning.
+   */
+  sendPaymentUsd: async (
+    toAddress: string,
+    amountUsd: number,
+  ): Promise<{ signature: string; confirmed: boolean; amountSol: number; solPrice: number }> => {
+    const priceRes = await fetch(
+      'https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd',
+    );
+    if (!priceRes.ok) throw new Error('Failed to fetch SOL price');
+    const priceData = await priceRes.json();
+    const solPrice: number = priceData.solana.usd;
+    if (!solPrice || solPrice <= 0) throw new Error('Invalid SOL price received');
+    const amountSol = amountUsd / solPrice;
+
+    const result = await solanaService.sendPayment(toAddress, amountSol);
+    return { ...result, amountSol, solPrice };
+  },
+
+  /** Wipe the stored keypair (for wallet switching / reset). */
+  clearWallet: async (): Promise<void> => {
+    await SecureStore.deleteItemAsync(WALLET_KEY);
+  },
 };

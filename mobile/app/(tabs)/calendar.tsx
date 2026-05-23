@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TopAppBar } from '@/components/ui/TopAppBar';
 import { theme } from '@/constants/theme';
+import { useAppStore } from '@/store/appStore';
 
 const UPCOMING = [
   { title: 'Validator Node Rent', date: 'OCT 04', amount: '-15.00 SOL', negative: true },
@@ -21,6 +22,27 @@ const DOT_DAYS = new Set(['4', '15', '26']);
 const SELECTED = '12';
 
 export default function CalendarScreen() {
+  const { debts, solPrice } = useAppStore();
+
+  const formattedDebts = debts
+    .filter((debt) => debt.status === 'pending')
+    .map((debt) => {
+      const dateObj = new Date(debt.dueDate || debt.createdAt);
+      const month = dateObj.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      
+      const solAmount = solPrice ? debt.amountUsd / solPrice : 0;
+      
+      return {
+        title: `Pay ${debt.contactName}`,
+        date: `${month} ${day}`,
+        amount: `-${solAmount.toFixed(2)} SOL`,
+        negative: true,
+      };
+    });
+
+  const allUpcoming = [...formattedDebts, ...UPCOMING];
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <TopAppBar />
@@ -96,10 +118,10 @@ export default function CalendarScreen() {
           <View style={styles.listHeader}>
             <Text style={styles.listTitle}>Upcoming Transactions</Text>
           </View>
-          {UPCOMING.map((item, i) => (
+          {allUpcoming.map((item, i) => (
             <View
-              key={item.title}
-              style={[styles.listRow, i < UPCOMING.length - 1 && styles.listRowBorder]}
+              key={`${item.title}-${i}`}
+              style={[styles.listRow, i < allUpcoming.length - 1 && styles.listRowBorder]}
             >
               <View>
                 <Text style={styles.listName}>{item.title}</Text>

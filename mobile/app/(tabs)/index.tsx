@@ -4,6 +4,8 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
@@ -36,6 +38,7 @@ export default function CameraScreen() {
     amountSol?: number;
     txSignature?: string;
     error?: string;
+    dueDate?: string | null;
   } | null>(null);
 
   const {
@@ -49,6 +52,7 @@ export default function CameraScreen() {
     walletAddress,
     transcript,
     parsedAmount,
+    parsedDueDate,
   } = useAppStore();
 
   const { recognize, reset: resetRecognition } = useFaceRecognition();
@@ -74,9 +78,8 @@ export default function CameraScreen() {
       setUIState('profile');
     } else {
       setUIState('voice');
-      startListening();
     }
-  }, [recognizedContact, requiresConfirmation, uiState, startListening]);
+  }, [recognizedContact, requiresConfirmation, uiState]);
 
   const captureAndRecognize = useCallback(async () => {
     if (isScanningRef.current) return;
@@ -118,15 +121,14 @@ export default function CameraScreen() {
 
   const handleStartPayment = useCallback(() => {
     setUIState('voice');
-    startListening();
-  }, [startListening]);
+  }, []);
 
   const handleAmountConfirmed = useCallback(
-    async (amount: number) => {
+    async (amount: number, dueDate?: string | null) => {
       if (!recognizedContact || !walletAddress) return;
 
       setUIState('payment_status');
-      setPaymentResult({ status: 'sending', amountUsd: amount });
+      setPaymentResult({ status: 'sending', amountUsd: amount, dueDate });
 
       try {
         const amountSol = usdToSol(amount);
@@ -134,6 +136,7 @@ export default function CameraScreen() {
           setPaymentResult({
             status: 'failed',
             amountUsd: amount,
+            dueDate,
             error: 'Could not get SOL price',
           });
           return;
@@ -143,8 +146,35 @@ export default function CameraScreen() {
           setPaymentResult({
             status: 'failed',
             amountUsd: amount,
+            dueDate,
             error: 'No wallet address',
           });
+          return;
+        }
+
+        // If a due date is specified, it is a scheduled payment.
+        // Bypasses direct Solana transaction and creates a scheduled debt.
+        if (dueDate) {
+          useAppStore.getState().addDebt({
+            id: `debt-${Date.now()}`,
+            contactId: recognizedContact.id,
+            contactName: recognizedContact.name,
+            amountUsd: amount,
+            status: 'pending',
+            createdAt: new Date().toISOString(),
+            dueDate: new Date(dueDate).toISOString(),
+          });
+          
+          // Add to batch queue
+          useAppStore.getState().addToQueue(recognizedContact, amount);
+
+          setPaymentResult({
+            status: 'pending',
+            amountUsd: amount,
+            amountSol,
+            dueDate,
+          });
+          elevenlabsService.speakLine('insufficient_funds');
           return;
         }
 
@@ -162,6 +192,7 @@ export default function CameraScreen() {
             status: 'pending',
             amountUsd: amount,
             amountSol,
+            dueDate,
           });
           elevenlabsService.speakLine('insufficient_funds');
           return;
@@ -174,6 +205,7 @@ export default function CameraScreen() {
             amountUsd: amount,
             amountSol,
             txSignature: fakeSig,
+            dueDate,
           });
           elevenlabsService.speakLine(
             'paid_confirmation',
@@ -193,6 +225,7 @@ export default function CameraScreen() {
           amountUsd: amount,
           amountSol,
           txSignature: signature,
+          dueDate,
         });
 
         useAppStore.getState().addTransaction({
@@ -219,6 +252,7 @@ export default function CameraScreen() {
           status: 'failed',
           amountUsd: amount,
           error: err.message || 'Transaction failed',
+          dueDate,
         });
         elevenlabsService.speakLine('tx_failed');
       }
@@ -233,6 +267,13 @@ export default function CameraScreen() {
       refreshBalance,
     ],
   );
+
+  useEffect(() => {
+    if (parsedAmount !== null && parsedDueDate !== null && recognizedContact && uiState === 'voice') {
+      // Auto-schedule payment if a date is spoken
+      handleAmountConfirmed(parsedAmount, parsedDueDate);
+    }
+  }, [parsedAmount, parsedDueDate, recognizedContact, uiState, handleAmountConfirmed]);
 
   const handleDismiss = useCallback(() => {
     setUIState('scanning');
@@ -270,89 +311,93 @@ export default function CameraScreen() {
     uiState === 'scanning' || uiState === 'profile' || uiState === 'voice';
 
   return (
-    <View style={styles.container}>
-      <CameraView ref={cameraRef} style={styles.camera} facing="back">
-        {showScanChrome && (
-          <View style={styles.overlay} pointerEvents="box-none">
-            <View style={[styles.statusWrap, { paddingTop: insets.top + 16 }]}>
-              <View style={styles.statusPill}>
-                <View style={styles.statusDot} />
-                <Text style={styles.statusText}>
-                  {recognizedContact
-                    ? 'Identity locked'
-                    : 'Biometric Syncing…'}
-                </Text>
-              </View>
-              {demoMode && (
-                <View style={styles.demoBadge}>
-                  <Text style={styles.demoText}>DEMO</Text>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.container}>
+        <CameraView ref={cameraRef} style={styles.camera} facing="back">
+          {showScanChrome && (
+            <View style={styles.overlay} pointerEvents="box-none">
+              <View style={[styles.statusWrap, { paddingTop: insets.top + 16 }]}>
+                <View style={styles.statusPill}>
+                  <View style={styles.statusDot} />
+                  <Text style={styles.statusText}>
+                    {recognizedContact
+                      ? 'Identity locked'
+                      : 'Biometric Syncing…'}
+                  </Text>
                 </View>
-              )}
+                {demoMode && (
+                  <View style={styles.demoBadge}>
+                    <Text style={styles.demoText}>DEMO</Text>
+                  </View>
+                )}
+              </View>
+
+              {uiState !== 'voice' && <ScanReticle />}
             </View>
+          )}
+        </CameraView>
 
-            {uiState !== 'voice' && <ScanReticle />}
-          </View>
-        )}
-      </CameraView>
-
-      {uiState === 'profile' && recognizedContact && (
-        <ProfileCard
-          contact={recognizedContact}
-          confidence={recognitionConfidence}
-          requiresConfirmation={requiresConfirmation}
-          onConfirmIdentity={() => {
-            // Low-confidence match confirmed -> jump straight to voice listening.
-            useAppStore.getState().setRecognizedContact(
-              recognizedContact,
-              recognitionConfidence,
-              false,
-            );
-            setUIState('voice');
-            startListening();
-          }}
-          onDeny={handleClose}
-          onStartPayment={handleStartPayment}
-          onClose={handleClose}
-        />
-      )}
-
-      {uiState === 'voice' && recognizedContact && (
-        <>
-          <View
-            pointerEvents="none"
-            style={[styles.matchBanner, { top: insets.top + 64 }]}
-          >
-            <Text style={styles.matchBannerLabel}>Paying</Text>
-            <Text style={styles.matchBannerName}>{recognizedContact.name}</Text>
-          </View>
-          <VoiceListener
-            isListening={isListening}
-            transcript={transcript}
-            parsedAmount={parsedAmount}
-            contactName={recognizedContact.name}
-            onAmountConfirmed={handleAmountConfirmed}
-            onCancel={() => {
-              // cancelListening skips the audio upload -- no wasted API call.
-              cancelListening();
-              handleClose();
+        {uiState === 'profile' && recognizedContact && (
+          <ProfileCard
+            contact={recognizedContact}
+            confidence={recognitionConfidence}
+            requiresConfirmation={requiresConfirmation}
+            onConfirmIdentity={() => {
+              // Low-confidence match confirmed -> jump straight to voice screen.
+              useAppStore.getState().setRecognizedContact(
+                recognizedContact,
+                recognitionConfidence,
+                false,
+              );
+              setUIState('voice');
             }}
+            onDeny={handleClose}
+            onStartPayment={handleStartPayment}
+            onClose={handleClose}
           />
-        </>
-      )}
+        )}
 
-      {uiState === 'payment_status' && paymentResult && recognizedContact && (
-        <PaymentStatus
-          status={paymentResult.status}
-          amountUsd={paymentResult.amountUsd}
-          amountSol={paymentResult.amountSol}
-          contactName={recognizedContact.name}
-          txSignature={paymentResult.txSignature}
-          error={paymentResult.error}
-          onRetry={() => handleAmountConfirmed(paymentResult.amountUsd)}
-          onDismiss={handleDismiss}
-        />
-      )}
-    </View>
+        {uiState === 'voice' && recognizedContact && (
+          <>
+            <View
+              pointerEvents="none"
+              style={[styles.matchBanner, { top: insets.top + 64 }]}
+            >
+              <Text style={styles.matchBannerLabel}>Paying</Text>
+              <Text style={styles.matchBannerName}>{recognizedContact.name}</Text>
+            </View>
+            <VoiceListener
+              isListening={isListening}
+              transcript={transcript}
+              parsedAmount={parsedAmount}
+              parsedDueDate={parsedDueDate}
+              contactName={recognizedContact.name}
+              onAmountConfirmed={handleAmountConfirmed}
+              onStartListening={startListening}
+              onStopListening={stopListening}
+              onCancel={() => {
+                // cancelListening skips the audio upload -- no wasted API call.
+                cancelListening();
+                handleClose();
+              }}
+            />
+          </>
+        )}
+
+        {uiState === 'payment_status' && paymentResult && recognizedContact && (
+          <PaymentStatus
+            status={paymentResult.status}
+            amountUsd={paymentResult.amountUsd}
+            amountSol={paymentResult.amountSol}
+            contactName={recognizedContact.name}
+            txSignature={paymentResult.txSignature}
+            error={paymentResult.error}
+            onRetry={() => handleAmountConfirmed(paymentResult.amountUsd, paymentResult.dueDate)}
+            onDismiss={handleDismiss}
+          />
+        )}
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 

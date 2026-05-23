@@ -71,6 +71,42 @@ export function useWallet() {
     return Date.now() - solPriceFetchedAt > PRICE_STALENESS_LIMIT_MS;
   }, [solPriceFetchedAt]);
 
+  /** Check SecureStore for an existing wallet and hydrate Zustand. */
+  const loadExistingWallet = useCallback(async () => {
+    const keypair = await solanaService.getKeypair();
+    if (keypair) {
+      const publicKey = keypair.publicKey.toBase58();
+      const currentName = useAppStore.getState().userName;
+      setUser(currentName ?? '', publicKey);
+      const balance = await solanaService.getBalance(publicKey).catch(() => 0);
+      setWalletBalance(balance);
+      return publicKey;
+    }
+    return null;
+  }, [setUser, setWalletBalance]);
+
+  /** Send SOL denominated in USD — fetches live price, converts, fires tx. */
+  const send = useCallback(
+    async (toAddress: string, amountUsd: number) => {
+      const result = await solanaService.sendPaymentUsd(toAddress, amountUsd);
+      await refreshBalance();
+      return result;
+    },
+    [refreshBalance],
+  );
+
+  /** Import a wallet from a raw secret-key byte array. */
+  const importFromSecret = useCallback(
+    async (secretKeyArray: number[], name?: string) => {
+      const publicKey = await solanaService.importWallet(secretKeyArray);
+      setUser(name ?? useAppStore.getState().userName ?? '', publicKey);
+      const balance = await solanaService.getBalance(publicKey).catch(() => 0);
+      setWalletBalance(balance);
+      return publicKey;
+    },
+    [setUser, setWalletBalance],
+  );
+
   return {
     walletAddress,
     walletBalanceSol,
@@ -81,5 +117,8 @@ export function useWallet() {
     usdToSol,
     canAfford,
     isPriceStale,
+    loadExistingWallet,
+    send,
+    importFromSecret,
   };
 }

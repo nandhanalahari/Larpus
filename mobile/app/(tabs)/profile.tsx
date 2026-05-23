@@ -5,6 +5,8 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -31,6 +33,9 @@ export default function ProfileScreen() {
 
   const { refreshBalance } = useWallet();
   const [longPressCount, setLongPressCount] = useState(0);
+  const [importKey, setImportKey] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   const pendingDebtCount = debts.filter((d) => d.status === 'pending').length;
   const totalPaid = transactions
@@ -59,6 +64,36 @@ export default function ProfileScreen() {
       setLongPressCount(0);
     }
   }, [longPressCount, toggleDemoMode]);
+
+  const handleCreateWallet = useCallback(async () => {
+    try {
+      const { publicKey } = await solanaService.createWallet();
+      useAppStore.getState().setUser(userName ?? 'User', publicKey);
+      await refreshBalance();
+      Alert.alert('Wallet Created', `Address: ${solanaService.shortenAddress(publicKey)}`);
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to create wallet');
+    }
+  }, [userName, refreshBalance]);
+
+  const handleImportWallet = useCallback(async () => {
+    if (!importKey.trim()) return;
+    setImporting(true);
+    try {
+      const parsed = JSON.parse(importKey.trim());
+      if (!Array.isArray(parsed)) throw new Error('Expected a JSON array of numbers');
+      const publicKey = await solanaService.importWallet(parsed);
+      useAppStore.getState().setUser(userName ?? '', publicKey);
+      await refreshBalance();
+      setImportKey('');
+      setShowImport(false);
+      Alert.alert('Wallet Imported', `Address: ${solanaService.shortenAddress(publicKey)}`);
+    } catch (err: any) {
+      Alert.alert('Import Failed', err.message || 'Invalid secret key format');
+    } finally {
+      setImporting(false);
+    }
+  }, [importKey, userName, refreshBalance]);
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -108,6 +143,46 @@ export default function ProfileScreen() {
           <Text style={styles.actionTitle}>Request Airdrop</Text>
           <Text style={styles.actionDesc}>Get 2 SOL from devnet faucet</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity style={styles.actionBtn} onPress={handleCreateWallet}>
+          <Text style={styles.actionTitle}>Create New Wallet</Text>
+          <Text style={styles.actionDesc}>Generate a fresh devnet keypair</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => setShowImport(!showImport)}
+        >
+          <Text style={styles.actionTitle}>Import Wallet</Text>
+          <Text style={styles.actionDesc}>Paste a secret key to restore</Text>
+        </TouchableOpacity>
+
+        {showImport && (
+          <View style={styles.importSection}>
+            <TextInput
+              style={styles.importInput}
+              value={importKey}
+              onChangeText={setImportKey}
+              placeholder='Paste secret key array [1,2,3,...]'
+              placeholderTextColor={theme.colors.onPrimaryContainer}
+              multiline
+              numberOfLines={3}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity
+              style={[styles.importBtn, importing && styles.btnDisabled]}
+              onPress={handleImportWallet}
+              disabled={importing}
+            >
+              {importing ? (
+                <ActivityIndicator size="small" color={theme.colors.onTertiary} />
+              ) : (
+                <Text style={styles.importBtnText}>Import</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={styles.serverStatus}>
           <View
@@ -283,5 +358,42 @@ const styles = StyleSheet.create({
     color: theme.colors.onPrimaryContainer,
     letterSpacing: 1,
     textTransform: 'uppercase',
+  },
+  importSection: {
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    padding: 16,
+    marginBottom: 12,
+    gap: 12,
+  },
+  importInput: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 12,
+    color: theme.colors.onSurface,
+    borderWidth: 1,
+    borderColor: theme.colors.outlineVariant,
+    backgroundColor: theme.colors.surface,
+    padding: 12,
+    borderRadius: theme.radius.default,
+    minHeight: 64,
+    textAlignVertical: 'top',
+  },
+  importBtn: {
+    backgroundColor: theme.colors.tertiary,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderRadius: theme.radius.default,
+  },
+  importBtnText: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.colors.onTertiary,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  btnDisabled: {
+    opacity: 0.5,
   },
 });

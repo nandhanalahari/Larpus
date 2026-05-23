@@ -6,10 +6,10 @@ import { MIC_TIMEOUT_MS } from '@/constants/timing';
 import { MAX_PAYMENT_USD, MIN_PAYMENT_USD } from '@/constants/thresholds';
 
 type VoiceResult =
-  | { intent: 'pay'; amount: number; confidence: number; transcript: string }
-  | { intent: 'unclear'; reason: string; transcript: string; fallback?: 'keypad' }
+  | { intent: 'pay'; amount: number; confidence: number; transcript: string; dueDate?: string | null }
+  | { intent: 'unclear'; reason: string; transcript: string; fallback?: 'keypad'; dueDate?: string | null }
   | { intent: 'invalid'; reason: string; transcript: string; min?: number; max?: number }
-  | { intent: 'confirm_large'; amount: number; confidence: number; transcript: string };
+  | { intent: 'confirm_large'; amount: number; confidence: number; transcript: string; dueDate?: string | null };
 
 export function useVoice() {
   const {
@@ -18,6 +18,7 @@ export function useVoice() {
     setTranscript,
     setParsedAmount,
     recognizedContact,
+    setParsedDueDate,
   } = useAppStore();
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -38,8 +39,29 @@ export function useVoice() {
       }
 
       try {
-        const res = await api.processVoice(uri, recognizedContact?.id);
+        const res = await api.processVoice(uri, recognizedContact?.id) as any;
+
+        // Recipient verification check
+        if (res.intent === 'pay' && res.recipient_name && recognizedContact) {
+          const contactNameLower = recognizedContact.name.toLowerCase();
+          const spokenLower = res.recipient_name.toLowerCase();
+
+          if (!contactNameLower.includes(spokenLower) && !spokenLower.includes(contactNameLower)) {
+            const errorMsg = `Recipient mismatch: Heard "${res.recipient_name}", but paying ${recognizedContact.name}`;
+            setTranscript(errorMsg);
+            setParsedAmount(null);
+            setParsedDueDate(null);
+            return {
+              intent: 'unclear',
+              reason: 'recipient_mismatch',
+              transcript: errorMsg,
+            };
+          }
+        }
+
         setTranscript(res.raw_transcript || '');
+        const dueDate = res.due_date || null;
+        setParsedDueDate(dueDate);
 
         if (res.intent === 'pay') {
           const amount = res.amount_usd;
@@ -60,6 +82,7 @@ export function useVoice() {
               amount,
               confidence: res.confidence,
               transcript: res.raw_transcript,
+              dueDate,
             };
           }
           setParsedAmount(amount);
@@ -68,6 +91,7 @@ export function useVoice() {
             amount,
             confidence: res.confidence,
             transcript: res.raw_transcript,
+            dueDate,
           };
         }
 
@@ -76,6 +100,7 @@ export function useVoice() {
           reason: res.reason || 'unclear',
           fallback: res.fallback,
           transcript: res.raw_transcript || '',
+          dueDate,
         };
       } catch (err) {
         console.warn('[Voice] processVoice failed:', err);
@@ -87,7 +112,7 @@ export function useVoice() {
         };
       }
     },
-    [recognizedContact, setListening, setTranscript, setParsedAmount],
+    [recognizedContact, setListening, setTranscript, setParsedAmount, setParsedDueDate],
   );
 
   const startListening = useCallback(async () => {
@@ -132,7 +157,29 @@ export function useVoice() {
         return { intent: 'unclear', reason: 'no_contact', transcript };
       }
       try {
-        const result = await api.parseVoice(transcript, recognizedContact.id);
+        const result = await api.parseVoice(transcript, recognizedContact.id) as any;
+
+        // Recipient verification check
+        if (result.intent === 'pay' && result.recipient_name) {
+          const contactNameLower = recognizedContact.name.toLowerCase();
+          const spokenLower = result.recipient_name.toLowerCase();
+
+          if (!contactNameLower.includes(spokenLower) && !spokenLower.includes(contactNameLower)) {
+            const errorMsg = `Recipient mismatch: Heard "${result.recipient_name}", but paying ${recognizedContact.name}`;
+            setTranscript(errorMsg);
+            setParsedAmount(null);
+            setParsedDueDate(null);
+            return {
+              intent: 'unclear',
+              reason: 'recipient_mismatch',
+              transcript: errorMsg,
+            };
+          }
+        }
+
+        const dueDate = result.due_date || null;
+        setParsedDueDate(dueDate);
+
         if (result.intent === 'pay') {
           const amount = result.amount_usd;
           if (amount <= 0) return { intent: 'invalid', reason: 'non_positive', transcript };
@@ -144,17 +191,18 @@ export function useVoice() {
               amount,
               confidence: result.confidence,
               transcript,
+              dueDate,
             };
           setParsedAmount(amount);
-          return { intent: 'pay', amount, confidence: result.confidence, transcript };
+          return { intent: 'pay', amount, confidence: result.confidence, transcript, dueDate };
         }
-        return { intent: 'unclear', reason: 'unclear', fallback: 'keypad', transcript };
+        return { intent: 'unclear', reason: 'unclear', fallback: 'keypad', transcript, dueDate };
       } catch (err) {
         console.warn('[Voice] parse failed:', err);
         return { intent: 'unclear', reason: 'api_error', fallback: 'keypad', transcript };
       }
     },
-    [recognizedContact, setParsedAmount],
+    [recognizedContact, setParsedAmount, setParsedDueDate, setTranscript],
   );
 
   useEffect(() => {
