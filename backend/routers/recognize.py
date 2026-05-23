@@ -71,14 +71,19 @@ async def recognize_face(req: RecognizeRequest):
         total_outstanding += debt["amount_usd"]
 
     tx_col = get_transactions_collection()
+    # Filter to txs that actually carry a USD amount — seeded on-chain demo rows
+    # only have amount_sol and would crash the .[] access below otherwise.
     last_tx = await tx_col.find_one(
-        {"to_wallet": match.get("solana_wallet_address")},
+        {
+            "to_wallet": match.get("solana_wallet_address"),
+            "amount_usd": {"$exists": True},
+        },
         sort=[("created_at", -1)],
     )
     last_payment = None
     if last_tx:
         last_payment = LastPayment(
-            amount_usd=last_tx["amount_usd"],
+            amount_usd=float(last_tx.get("amount_usd", 0.0)),
             paid_at=str(last_tx.get("confirmed_at", last_tx.get("created_at", ""))),
         )
 
