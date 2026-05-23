@@ -87,10 +87,17 @@ export default function EnrollScreen() {
           [{ text: 'OK', onPress: () => { setPhotos([]); setAngleIndex(0); } }],
         );
       } else if (msg.includes('409')) {
+        // Parse out the existing contact's name from the API error body.
+        // Format: 'API 409: {"detail":"Contact with this wallet already exists: <Name>"}'
+        let conflictName = '';
+        const match = msg.match(/already exists:\s*([^"}]+)/);
+        if (match) conflictName = match[1].trim();
         Alert.alert(
-          'Already enrolled',
-          'A contact with this wallet already exists for you.',
-          [{ text: 'OK', onPress: () => router.back() }],
+          'Wallet already in use',
+          conflictName
+            ? `That wallet is already assigned to "${conflictName}". Use a different wallet, or leave the field empty to enroll by face only.`
+            : 'That wallet is already assigned to another contact. Use a different one or leave it empty.',
+          [{ text: 'OK' }],
         );
       } else {
         Alert.alert('Enrollment failed', msg);
