@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     coingecko_api_url: str = "https://api.coingecko.com/api/v3"
     insightface_model: str = "buffalo_l"
     port: int = 8000
+    solana_rpc_url: str = "https://api.devnet.solana.com"
+    solana_cluster: str = "devnet"
 
     class Config:
         env_file = ".env"

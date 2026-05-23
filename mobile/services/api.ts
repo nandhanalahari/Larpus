@@ -78,6 +78,25 @@ type HealthResponse = {
   memory_percent?: number;
 };
 
+export type HistoryTransaction = {
+  signature: string;
+  slot: number;
+  block_time: number; // unix seconds
+  direction: 'sent' | 'received';
+  counterparty_wallet: string;
+  counterparty_name: string | null;
+  amount_sol: number;
+  cluster: string;
+  explorer_url: string;
+};
+
+export type TransactionHistoryResponse = {
+  wallet: string;
+  count: number;
+  synced: number;
+  transactions: HistoryTransaction[];
+};
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -178,4 +197,9 @@ export const api = {
     }>(`/contacts/${contactId}/debts`),
 
   getSolPrice: () => request<SolPriceResponse>('/sol/price'),
+
+  getTransactionHistory: (wallet: string, limit = 30, sync = true) =>
+    request<TransactionHistoryResponse>(
+      `/transactions/${encodeURIComponent(wallet)}?limit=${limit}&sync=${sync ? 'true' : 'false'}`,
+    ),
 };

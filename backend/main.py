@@ -9,7 +9,7 @@ load_dotenv()
 from database import connect_db, close_db
 from services.face_service import load_model, is_model_loaded
 from services.gemini_service import load_gemini
-from routers import recognize, contacts, voice, payments, sol_price
+from routers import recognize, contacts, voice, payments, sol_price, transactions
 from models.schemas import HealthResponse
 
 
@@ -41,6 +41,7 @@ app.include_router(contacts.router, prefix="/api/v1")
 app.include_router(voice.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1")
 app.include_router(sol_price.router, prefix="/api/v1")
+app.include_router(transactions.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

@@ -118,6 +118,27 @@ class SolPriceResponse(BaseModel):
     source: str = "coingecko"
 
 
+# ── /transactions/{wallet} ──
+
+class HistoryTransaction(BaseModel):
+    signature: str
+    slot: int
+    block_time: int  # unix seconds
+    direction: str  # "sent" | "received"
+    counterparty_wallet: str
+    counterparty_name: str | None = None
+    amount_sol: float
+    cluster: str
+    explorer_url: str
+
+
+class TransactionHistoryResponse(BaseModel):
+    wallet: str
+    count: int
+    synced: int
+    transactions: list[HistoryTransaction]
+
+
 # ── Health ──
 
 class HealthResponse(BaseModel):
