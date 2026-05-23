@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export type Contact = {
   id: string;
@@ -106,7 +108,9 @@ type AppState = {
 
 let queueIdCounter = 0;
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
   onboardingComplete: false,
   walletSetup: false,
   selfEnrolled: false,
@@ -183,4 +187,26 @@ export const useAppStore = create<AppState>((set) => ({
   solPrice: null,
   solPriceFetchedAt: null,
   setSolPrice: (price) => set({ solPrice: price, solPriceFetchedAt: Date.now() }),
-}));
+    }),
+    {
+      name: 'cipher_app_store',
+      storage: createJSONStorage(() => AsyncStorage),
+      // Only persist user-owned, durable slices. Skip ephemeral UI state
+      // (recognizedContact, isListening, transcript) and server-side cached
+      // truth (walletBalanceSol, solPrice) — those rehydrate from the live source.
+      partialize: (state) => ({
+        onboardingComplete: state.onboardingComplete,
+        walletSetup: state.walletSetup,
+        selfEnrolled: state.selfEnrolled,
+        firstContactAdded: state.firstContactAdded,
+        userName: state.userName,
+        walletAddress: state.walletAddress,
+        selfContactId: state.selfContactId,
+        transactions: state.transactions,
+        debts: state.debts,
+        queue: state.queue,
+        demoMode: state.demoMode,
+      }),
+    },
+  ),
+);

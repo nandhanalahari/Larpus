@@ -21,6 +21,7 @@ async def execute_payment(req: ExecutePaymentRequest):
     debt_doc = {
         "from_user_id": req.user_id,
         "to_contact_id": req.contact_id,
+        "to_wallet": req.to_wallet,
         "amount_usd": req.amount_usd,
         "amount_sol": amount_sol,
         "sol_price_at_payment": sol_price,

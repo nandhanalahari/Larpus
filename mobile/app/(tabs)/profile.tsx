@@ -9,14 +9,15 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useAppStore } from '@/store/appStore';
 import { useWallet } from '@/hooks/useWallet';
 import { WalletBalance } from '@/components/WalletBalance';
 import { TopAppBar } from '@/components/ui/TopAppBar';
 import { solanaService } from '@/services/solana';
+import { api, UserDebtsResponse } from '@/services/api';
 import { theme } from '@/constants/theme';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 export default function ProfileScreen() {
   const {
@@ -41,6 +42,39 @@ export default function ProfileScreen() {
   const totalPaid = transactions
     .filter((t) => t.status === 'confirmed')
     .reduce((sum, t) => sum + t.amountUsd, 0);
+
+  const [ledger, setLedger] = useState<UserDebtsResponse | null>(null);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+
+  const refreshLedger = useCallback(async () => {
+    if (!walletAddress) return;
+    try {
+      const res = await api.getUserDebts(walletAddress);
+      setLedger(res);
+    } catch (err) {
+      console.warn('[ledger] fetch failed:', err);
+    }
+  }, [walletAddress]);
+
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useFocusEffect(
+    useCallback(() => {
+      refreshBalance();
+      setLedgerLoading(true);
+      refreshLedger().finally(() => setLedgerLoading(false));
+      // Poll wallet + ledger every 10s so changes appear in near-real-time.
+      pollRef.current = setInterval(() => {
+        refreshBalance();
+        refreshLedger();
+      }, 10000);
+      return () => {
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      };
+    }, [refreshBalance, refreshLedger]),
+  );
 
   const handleAirdrop = useCallback(async () => {
     if (!walletAddress) return;
@@ -138,6 +172,81 @@ export default function ProfileScreen() {
             <Text style={styles.statLabel}>Pending</Text>
           </View>
         </View>
+
+        <Text style={styles.sectionHeader}>Ledger</Text>
+
+        <View style={styles.ledgerRow}>
+          <View style={[styles.ledgerCard, styles.ledgerOwe]}>
+            <Text style={styles.ledgerLabel}>I owe</Text>
+            <Text style={styles.ledgerAmount}>
+              ${ledger?.total_i_owe_usd.toFixed(2) ?? '0.00'}
+            </Text>
+            <Text style={styles.ledgerCount}>
+              {ledger?.owed_by_me.filter((d) => d.status !== 'paid').length ?? 0} pending
+            </Text>
+          </View>
+          <View style={[styles.ledgerCard, styles.ledgerOwed]}>
+            <Text style={styles.ledgerLabel}>Owed to me</Text>
+            <Text style={[styles.ledgerAmount, styles.ledgerAmountPositive]}>
+              ${ledger?.total_owed_to_me_usd.toFixed(2) ?? '0.00'}
+            </Text>
+            <Text style={styles.ledgerCount}>
+              {ledger?.owed_to_me.filter((d) => d.status !== 'paid').length ?? 0} pending
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.subsectionHeader}>Money I owe</Text>
+        {ledger && ledger.owed_by_me.length > 0 ? (
+          ledger.owed_by_me.map((d) => (
+            <View key={d.debt_id} style={styles.debtRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.debtName}>{d.counterparty_name || 'Unknown'}</Text>
+                <Text style={styles.debtMeta}>
+                  {d.status.toUpperCase()}
+                  {d.due_date ? ` · due ${d.due_date}` : ''}
+                </Text>
+              </View>
+              <Text style={[styles.debtAmount, d.status === 'paid' && styles.debtAmountPaid]}>
+                {d.status === 'paid' ? '✓ ' : '-'}${d.amount_usd.toFixed(2)}
+              </Text>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.emptyRow}>
+            {ledgerLoading ? 'Loading…' : 'No outstanding debts'}
+          </Text>
+        )}
+
+        <Text style={styles.subsectionHeader}>Owed to me</Text>
+        {ledger && ledger.owed_to_me.length > 0 ? (
+          ledger.owed_to_me.map((d) => (
+            <View key={d.debt_id} style={styles.debtRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.debtName}>{d.counterparty_name || 'Unknown'}</Text>
+                <Text style={styles.debtMeta}>
+                  {d.status.toUpperCase()}
+                  {d.due_date ? ` · due ${d.due_date}` : ''}
+                </Text>
+              </View>
+              <Text
+                style={[
+                  styles.debtAmount,
+                  styles.debtAmountPositive,
+                  d.status === 'paid' && styles.debtAmountPaid,
+                ]}
+              >
+                {d.status === 'paid' ? '✓ ' : '+'}${d.amount_usd.toFixed(2)}
+              </Text>
+            </View>
+          ))
+        ) : (
+          <Text style={styles.emptyRow}>
+            {ledgerLoading ? 'Loading…' : 'Nothing owed to you'}
+          </Text>
+        )}
+
+        <View style={{ height: 16 }} />
 
         <TouchableOpacity style={styles.actionBtn} onPress={handleAirdrop}>
           <Text style={styles.actionTitle}>Request Airdrop</Text>
@@ -395,5 +504,103 @@ const styles = StyleSheet.create({
   },
   btnDisabled: {
     opacity: 0.5,
+  },
+  sectionHeader: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    color: theme.colors.onSurfaceVariant,
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  subsectionHeader: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    color: theme.colors.onPrimaryContainer,
+    marginTop: 16,
+    marginBottom: 6,
+  },
+  ledgerRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 8,
+  },
+  ledgerCard: {
+    flex: 1,
+    borderWidth: 1,
+    backgroundColor: theme.colors.surfaceContainerLowest,
+    padding: 16,
+    gap: 4,
+  },
+  ledgerOwe: {
+    borderColor: theme.colors.error,
+  },
+  ledgerOwed: {
+    borderColor: theme.colors.tertiary,
+  },
+  ledgerLabel: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: theme.colors.onSurfaceVariant,
+  },
+  ledgerAmount: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 22,
+    fontWeight: '700',
+    color: theme.colors.error,
+  },
+  ledgerAmountPositive: {
+    color: theme.colors.tertiary,
+  },
+  ledgerCount: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 11,
+    color: theme.colors.onPrimaryContainer,
+  },
+  debtRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.panelBg,
+  },
+  debtName: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
+    color: theme.colors.primary,
+  },
+  debtMeta: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 10,
+    color: theme.colors.onPrimaryContainer,
+    marginTop: 2,
+    letterSpacing: 1,
+  },
+  debtAmount: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.colors.error,
+  },
+  debtAmountPositive: {
+    color: theme.colors.tertiary,
+  },
+  debtAmountPaid: {
+    color: theme.colors.onPrimaryContainer,
+    textDecorationLine: 'line-through',
+  },
+  emptyRow: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 12,
+    color: theme.colors.onPrimaryContainer,
+    paddingVertical: 10,
   },
 });

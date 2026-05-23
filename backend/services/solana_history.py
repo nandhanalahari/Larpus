@@ -118,23 +118,26 @@ async def _process_signature(wallet: str, sig_entry: dict) -> Optional[dict]:
 
 
 async def sync_wallet(wallet: str, limit: int = DEFAULT_FETCH_LIMIT) -> int:
-    """Fetch new signatures since the most recent cached one and upsert them.
+    """Fetch the latest N signatures for `wallet`, parse + upsert the new ones.
 
     Returns the number of newly cached transactions.
+
+    We deliberately do NOT pass an `until` cursor to the RPC — it's tempting
+    as an optimization, but the transactions collection contains both real
+    on-chain sigs and synthetic ones (DEMO_*, devnet_*, legacy /payments
+    rows) from seed scripts and earlier code paths. Passing a synthetic sig
+    as `until` to Solana RPC leads to silent under-fetching — most notably,
+    the receiver side of a transfer never gets cached.
+
+    Instead we pull the top-N latest sigs unconditionally, then skip the
+    ones we've already parsed via a single existence query. This costs at
+    most N small reads and is bounded by `limit`, but it's robust against
+    any junk that ends up in the transactions collection.
     """
     coll = get_transactions_collection()
 
-    # Find the newest cached signature for this wallet to use as `until` (RPC
-    # returns sigs newer than `until`, walking backwards from latest).
-    last_doc = await coll.find_one(
-        {"$or": [{"from_wallet": wallet}, {"to_wallet": wallet}]},
-        sort=[("block_time", -1)],
-        projection={"signature": 1},
-    )
-    until = last_doc.get("signature") if last_doc else None
-
     try:
-        sigs = await get_signatures_for_address(wallet, until=until, limit=limit)
+        sigs = await get_signatures_for_address(wallet, until=None, limit=limit)
     except Exception as e:
         log.warning("getSignaturesForAddress failed for %s: %s", wallet, e)
         return 0
@@ -142,21 +145,40 @@ async def sync_wallet(wallet: str, limit: int = DEFAULT_FETCH_LIMIT) -> int:
     if not sigs:
         return 0
 
-    log.info("sync_wallet wallet=%s candidates=%d (until=%s)", wallet, len(sigs), until)
+    sig_strings = [s.get("signature") for s in sigs if s.get("signature")]
+    # Find which of these signatures are already cached so we skip the
+    # (expensive) getTransaction round-trip for them.
+    cached_cursor = coll.find(
+        {"signature": {"$in": sig_strings}},
+        projection={"signature": 1},
+    )
+    already: set[str] = set()
+    async for d in cached_cursor:
+        already.add(d["signature"])
 
-    # Bounded concurrency so we don't blast public RPC.
+    fresh = [s for s in sigs if s.get("signature") and s["signature"] not in already]
+
+    log.info(
+        "sync_wallet wallet=%s candidates=%d cached=%d fresh=%d",
+        wallet, len(sigs), len(already), len(fresh),
+    )
+
+    if not fresh:
+        return 0
+
     sem = asyncio.Semaphore(PARSE_CONCURRENCY)
 
     async def _guarded(entry: dict) -> Optional[dict]:
         async with sem:
             return await _process_signature(wallet, entry)
 
-    docs = await asyncio.gather(*(_guarded(s) for s in sigs))
+    docs = await asyncio.gather(*(_guarded(s) for s in fresh))
     docs = [d for d in docs if d]
 
     inserted = 0
     for doc in docs:
-        # Upsert by signature so concurrent syncs don't double-write.
+        # Upsert by signature so concurrent syncs of the same tx (e.g. both
+        # sender and receiver hitting /transactions at once) don't double-write.
         res = await coll.update_one(
             {"signature": doc["signature"]},
             {"$set": doc},

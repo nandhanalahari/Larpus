@@ -140,6 +140,39 @@ class TransactionHistoryResponse(BaseModel):
     transactions: list[HistoryTransaction]
 
 
+# ── /debts ──
+
+class CreateDebtRequest(BaseModel):
+    from_user_id: str          # debtor wallet (the one who owes)
+    to_contact_id: str         # contact-doc _id (creditor as a contact in debtor's list)
+    to_wallet: str             # creditor wallet — needed for symmetric "owed to me" lookup
+    contact_name: str          # snapshot of creditor name at time of creation
+    amount_usd: float
+    due_date: str | None = None  # ISO yyyy-mm-dd; null = no scheduled date
+
+
+class DebtRecord(BaseModel):
+    debt_id: str
+    from_user_id: str
+    to_wallet: str
+    to_contact_id: str
+    counterparty_name: str
+    amount_usd: float
+    status: str  # pending | paid | failed | scheduled
+    created_at: str
+    due_date: str | None = None
+    paid_at: str | None = None
+    transaction_signature: str | None = None
+
+
+class UserDebtsResponse(BaseModel):
+    user_id: str
+    owed_by_me: list[DebtRecord]   # I am from_user_id
+    owed_to_me: list[DebtRecord]   # I am to_wallet
+    total_i_owe_usd: float
+    total_owed_to_me_usd: float
+
+
 # ── Health ──
 
 class HealthResponse(BaseModel):

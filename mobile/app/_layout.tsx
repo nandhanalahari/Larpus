@@ -10,6 +10,8 @@ import { StatusBar } from 'react-native';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { solanaService } from '@/services/solana';
+import { useAppStore } from '@/store/appStore';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -33,6 +35,26 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [loaded]);
+
+  // Reconcile wallet pubkey from SecureStore (source of truth for the keypair)
+  // with the persisted Zustand store. Covers the case where someone wipes
+  // AsyncStorage but still has the wallet in SecureStore, or vice versa.
+  useEffect(() => {
+    (async () => {
+      try {
+        const keypair = await solanaService.getKeypair();
+        if (keypair) {
+          const pub = keypair.publicKey.toBase58();
+          const { walletAddress, userName, setUser } = useAppStore.getState();
+          if (walletAddress !== pub) {
+            setUser(userName ?? '', pub);
+          }
+        }
+      } catch (err) {
+        console.warn('[hydrate] wallet check failed:', err);
+      }
+    })();
+  }, []);
 
   if (!loaded) {
     return null;

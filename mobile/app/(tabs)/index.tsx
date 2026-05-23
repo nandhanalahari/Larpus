@@ -19,6 +19,7 @@ import { VoiceListener } from '@/components/VoiceListener';
 import { PaymentStatus } from '@/components/PaymentStatus';
 import { ScanReticle } from '@/components/ScanReticle';
 import { solanaService } from '@/services/solana';
+import { api } from '@/services/api';
 import { elevenlabsService } from '@/services/elevenlabs';
 import { theme } from '@/constants/theme';
 import { CAMERA_FRAME_INTERVAL_MS } from '@/constants/timing';
@@ -155,6 +156,9 @@ export default function CameraScreen() {
         // If a due date is specified, it is a scheduled payment.
         // Bypasses direct Solana transaction and creates a scheduled debt.
         if (dueDate) {
+          // Persist to backend so both parties see it. Local optimistic add
+          // happens regardless so the UI updates instantly even if the
+          // network is slow or the request fails.
           useAppStore.getState().addDebt({
             id: `debt-${Date.now()}`,
             contactId: recognizedContact.id,
@@ -164,7 +168,20 @@ export default function CameraScreen() {
             createdAt: new Date().toISOString(),
             dueDate: new Date(dueDate).toISOString(),
           });
-          
+
+          if (recognizedContact.solanaWalletAddress) {
+            api
+              .createDebt({
+                fromUserId: walletAddress,
+                toContactId: recognizedContact.id,
+                toWallet: recognizedContact.solanaWalletAddress,
+                contactName: recognizedContact.name,
+                amountUsd: amount,
+                dueDate,
+              })
+              .catch((err) => console.warn('[debt] backend create failed:', err));
+          }
+
           // Add to batch queue
           useAppStore.getState().addToQueue(recognizedContact, amount);
 

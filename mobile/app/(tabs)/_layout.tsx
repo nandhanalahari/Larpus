@@ -3,6 +3,10 @@ import { StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { theme } from '@/constants/theme';
 
+export const unstable_settings = {
+  initialRouteName: 'profile',
+};
+
 function TabIcon({
   name,
   focused,
@@ -22,6 +26,7 @@ function TabIcon({
 export default function TabLayout() {
   return (
     <Tabs
+      initialRouteName="profile"
       screenOptions={{
         headerShown: false,
         tabBarStyle: styles.tabBar,
@@ -30,6 +35,15 @@ export default function TabLayout() {
         tabBarLabelStyle: styles.tabLabel,
       }}
     >
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ focused }) => (
+            <TabIcon name="account-circle" focused={focused} />
+          ),
+        }}
+      />
       <Tabs.Screen
         name="index"
         options={{
@@ -64,12 +78,6 @@ export default function TabLayout() {
           tabBarIcon: ({ focused }) => (
             <TabIcon name="calendar-today" focused={focused} />
           ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          href: null,
         }}
       />
     </Tabs>

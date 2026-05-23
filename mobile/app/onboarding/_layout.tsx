@@ -9,6 +9,8 @@ export default function OnboardingLayout() {
         animation: 'slide_from_right',
       }}
     >
+      <Stack.Screen name="login" />
+      <Stack.Screen name="signup" />
       <Stack.Screen name="wallet" />
       <Stack.Screen name="enroll-self" />
       <Stack.Screen name="add-first" />

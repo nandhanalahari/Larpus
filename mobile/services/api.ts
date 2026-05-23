@@ -98,6 +98,28 @@ export type TransactionHistoryResponse = {
   transactions: HistoryTransaction[];
 };
 
+export type DebtRecord = {
+  debt_id: string;
+  from_user_id: string;
+  to_wallet: string;
+  to_contact_id: string;
+  counterparty_name: string;
+  amount_usd: number;
+  status: 'pending' | 'scheduled' | 'paid' | 'failed';
+  created_at: string;
+  due_date: string | null;
+  paid_at: string | null;
+  transaction_signature: string | null;
+};
+
+export type UserDebtsResponse = {
+  user_id: string;
+  owed_by_me: DebtRecord[];
+  owed_to_me: DebtRecord[];
+  total_i_owe_usd: number;
+  total_owed_to_me_usd: number;
+};
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -202,5 +224,34 @@ export const api = {
   getTransactionHistory: (wallet: string, limit = 30, sync = true) =>
     request<TransactionHistoryResponse>(
       `/transactions/${encodeURIComponent(wallet)}?limit=${limit}&sync=${sync ? 'true' : 'false'}`,
+    ),
+
+  createDebt: (params: {
+    fromUserId: string;
+    toContactId: string;
+    toWallet: string;
+    contactName: string;
+    amountUsd: number;
+    dueDate?: string | null;
+  }) =>
+    request<DebtRecord>('/debts', {
+      method: 'POST',
+      body: JSON.stringify({
+        from_user_id: params.fromUserId,
+        to_contact_id: params.toContactId,
+        to_wallet: params.toWallet,
+        contact_name: params.contactName,
+        amount_usd: params.amountUsd,
+        due_date: params.dueDate ?? null,
+      }),
+    }),
+
+  getUserDebts: (wallet: string) =>
+    request<UserDebtsResponse>(`/debts/by-user/${encodeURIComponent(wallet)}`),
+
+  markDebtPaid: (debtId: string, transactionSignature?: string) =>
+    request<DebtRecord>(
+      `/debts/${encodeURIComponent(debtId)}/mark-paid${transactionSignature ? `?transaction_signature=${encodeURIComponent(transactionSignature)}` : ''}`,
+      { method: 'POST' },
     ),
 };

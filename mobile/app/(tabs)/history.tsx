@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -66,9 +66,21 @@ export default function HistoryScreen() {
     [walletAddress],
   );
 
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   useFocusEffect(
     useCallback(() => {
       fetchHistory('initial');
+      // Poll every 8s while focused so received transactions surface in near-real-time.
+      pollRef.current = setInterval(() => {
+        fetchHistory('refresh');
+      }, 8000);
+      return () => {
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      };
     }, [fetchHistory]),
   );
 
