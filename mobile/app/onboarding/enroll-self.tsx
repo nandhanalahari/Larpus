@@ -1,9 +1,10 @@
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import { useState, useRef } from 'react';
 import { useAppStore } from '@/store/appStore';
 import { cacheService } from '@/services/cache';
+import { api } from '@/services/api';
 import Colors from '@/constants/Colors';
 
 const ANGLES = ['Look straight at the camera', 'Turn slightly left', 'Turn slightly right'] as const;
@@ -13,11 +14,59 @@ export default function EnrollSelf() {
   const [currentAngle, setCurrentAngle] = useState(0);
   const [photos, setPhotos] = useState<string[]>([]);
   const [capturing, setCapturing] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const cameraRef = useRef<CameraView>(null);
-  const { setOnboardingStep, setSelfContactId } = useAppStore();
+  const { setOnboardingStep, setSelfContactId, userName, walletAddress } = useAppStore();
+
+  const enrollOnBackend = async (allPhotos: string[]) => {
+    if (!walletAddress) {
+      Alert.alert('Wallet missing', 'Go back and complete the wallet step first.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const res = await api.createContact({
+        ownerUserId: walletAddress,
+        name: userName ?? 'You',
+        phone: null,
+        solanaWalletAddress: walletAddress,
+        faceImagesBase64: allPhotos,
+      });
+      setSelfContactId(res.contact_id);
+      setOnboardingStep('self');
+      await cacheService.setOnboardingState({
+        walletDone: true,
+        selfEnrolled: true,
+        firstContact: false,
+      });
+      router.push('/onboarding/add-first');
+    } catch (err: any) {
+      const msg = err?.message ?? 'Upload failed';
+      if (msg.includes('No face detected')) {
+        Alert.alert(
+          'No face detected',
+          'One of your photos didn’t have a clear face. Let’s retake all 3.',
+          [{ text: 'OK', onPress: () => { setPhotos([]); setCurrentAngle(0); } }],
+        );
+      } else if (msg.includes('409')) {
+        // Already enrolled with this wallet — treat as success and move on.
+        setOnboardingStep('self');
+        await cacheService.setOnboardingState({
+          walletDone: true,
+          selfEnrolled: true,
+          firstContact: false,
+        });
+        router.push('/onboarding/add-first');
+      } else {
+        Alert.alert('Enrollment failed', msg);
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleCapture = async () => {
-    if (!cameraRef.current || capturing) return;
+    if (!cameraRef.current || capturing || uploading) return;
     setCapturing(true);
 
     try {
@@ -34,14 +83,7 @@ export default function EnrollSelf() {
       if (newPhotos.length < 3) {
         setCurrentAngle(currentAngle + 1);
       } else {
-        setOnboardingStep('self');
-        setSelfContactId('self-user');
-        await cacheService.setOnboardingState({
-          walletDone: true,
-          selfEnrolled: true,
-          firstContact: false,
-        });
-        router.push('/onboarding/add-first');
+        await enrollOnBackend(newPhotos);
       }
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Capture failed');
@@ -80,7 +122,9 @@ export default function EnrollSelf() {
       </View>
 
       <View style={styles.bottom}>
-        <Text style={styles.instruction}>{ANGLES[currentAngle]}</Text>
+        <Text style={styles.instruction}>
+          {uploading ? 'Enrolling on server…' : ANGLES[currentAngle]}
+        </Text>
 
         <View style={styles.progress}>
           {[0, 1, 2].map((i) => (
@@ -89,19 +133,23 @@ export default function EnrollSelf() {
               style={[
                 styles.progressDot,
                 i < photos.length && styles.progressDotDone,
-                i === currentAngle && styles.progressDotActive,
+                i === currentAngle && !uploading && styles.progressDotActive,
               ]}
             />
           ))}
         </View>
 
-        <TouchableOpacity
-          style={[styles.captureBtn, capturing && styles.btnDisabled]}
-          onPress={handleCapture}
-          disabled={capturing}
-        >
-          <View style={styles.captureBtnInner} />
-        </TouchableOpacity>
+        {uploading ? (
+          <ActivityIndicator size="large" color={Colors.palette.cyan400} />
+        ) : (
+          <TouchableOpacity
+            style={[styles.captureBtn, capturing && styles.btnDisabled]}
+            onPress={handleCapture}
+            disabled={capturing}
+          >
+            <View style={styles.captureBtnInner} />
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );

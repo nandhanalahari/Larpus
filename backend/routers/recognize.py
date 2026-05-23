@@ -29,7 +29,7 @@ async def recognize_face(req: RecognizeRequest):
     pipeline = [
         {
             "$vectorSearch": {
-                "index": "face_embedding_index",
+                "index": "vector_index",
                 "path": "face_embeddings.embedding",
                 "queryVector": embedding,
                 "numCandidates": 50,
