@@ -88,6 +88,7 @@ export type HistoryTransaction = {
   amount_sol: number;
   cluster: string;
   explorer_url: string;
+  notes: string | null;
 };
 
 export type TransactionHistoryResponse = {

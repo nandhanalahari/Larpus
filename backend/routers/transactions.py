@@ -72,6 +72,7 @@ async def get_transaction_history(
                 "counterparty_wallet": counterparty or "",
                 "amount_sol": float(doc.get("amount_sol", 0.0)),
                 "cluster": doc.get("cluster", settings.solana_cluster),
+                "notes": doc.get("notes"),
             }
         )
 
@@ -99,6 +100,7 @@ async def get_transaction_history(
             amount_sol=r["amount_sol"],
             cluster=r["cluster"],
             explorer_url=_explorer_url(r["signature"], r["cluster"]),
+            notes=r.get("notes"),
         )
         for r in rows
     ]

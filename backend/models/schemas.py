@@ -130,6 +130,7 @@ class HistoryTransaction(BaseModel):
     amount_sol: float
     cluster: str
     explorer_url: str
+    notes: str | None = None  # optional free-text purpose / memo
 
 
 class TransactionHistoryResponse(BaseModel):

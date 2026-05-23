@@ -140,6 +140,11 @@ export default function HistoryScreen() {
           </View>
           <View style={styles.rowTextWrap}>
             <Text style={styles.rowLabel}>{counterparty}</Text>
+            {tx.notes ? (
+              <Text style={styles.noteText} numberOfLines={1}>
+                “{tx.notes}”
+              </Text>
+            ) : null}
             <View style={styles.metaRow}>
               <Text style={styles.rowSub}>{relativeTime(tx.block_time)}</Text>
               <View style={styles.slotPill}>
@@ -349,6 +354,12 @@ const styles = StyleSheet.create({
     fontFamily: theme.fonts.mono,
     fontSize: 11,
     fontWeight: '600',
+    color: theme.colors.onSurfaceVariant,
+    marginTop: 4,
+  },
+  noteText: {
+    fontSize: 13,
+    fontStyle: 'italic',
     color: theme.colors.onSurfaceVariant,
     marginTop: 4,
   },
