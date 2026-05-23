@@ -291,6 +291,15 @@ export default function CameraScreen() {
             </View>
 
             {uiState !== 'voice' && <ScanReticle />}
+
+            {uiState === 'scanning' && (
+              <TouchableOpacity
+                style={[styles.addContactBtn, { bottom: insets.bottom + 24 }]}
+                onPress={() => router.push('/enroll')}
+              >
+                <Text style={styles.addContactBtnText}>+  Add Person</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </CameraView>
@@ -453,5 +462,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: theme.colors.primary,
     marginTop: 2,
+  },
+  addContactBtn: {
+    position: 'absolute',
+    alignSelf: 'center',
+    backgroundColor: theme.colors.tertiary,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 999,
+  },
+  addContactBtnText: {
+    fontFamily: theme.fonts.mono,
+    fontWeight: '700',
+    fontSize: 14,
+    color: theme.colors.onTertiary,
+    letterSpacing: 1,
   },
 });

@@ -12,8 +12,11 @@ import {
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { router } from 'expo-router';
 import { useState, useRef } from 'react';
+import { ActivityIndicator } from 'react-native';
 import { solanaService } from '@/services/solana';
 import { elevenlabsService } from '@/services/elevenlabs';
+import { api } from '@/services/api';
+import { useAppStore } from '@/store/appStore';
 import Colors from '@/constants/Colors';
 
 const ANGLES = ['Look straight', 'Slight left', 'Slight right'] as const;
@@ -30,7 +33,9 @@ export default function EnrollScreen() {
   const [angleIndex, setAngleIndex] = useState(0);
   const [photos, setPhotos] = useState<string[]>([]);
   const [capturing, setCapturing] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+  const walletAddress = useAppStore((s) => s.walletAddress);
 
   const handleWalletChange = (text: string) => {
     setWallet(text);
@@ -53,8 +58,50 @@ export default function EnrollScreen() {
     setStep('photos');
   };
 
+  const uploadContact = async (allPhotos: string[]) => {
+    if (!walletAddress) {
+      Alert.alert('Not signed in', 'Complete onboarding first.');
+      router.back();
+      return;
+    }
+    setUploading(true);
+    try {
+      const res = await api.createContact({
+        ownerUserId: walletAddress,
+        name: name.trim(),
+        phone: phone.trim() || null,
+        solanaWalletAddress: wallet.trim() || null,
+        faceImagesBase64: allPhotos,
+      });
+      Alert.alert(
+        'Contact Added',
+        `${res.name} enrolled with ${res.embeddings_stored} face embeddings.`,
+        [{ text: 'OK', onPress: () => router.back() }],
+      );
+    } catch (err: any) {
+      const msg = err?.message ?? 'Upload failed';
+      if (msg.includes('No face detected')) {
+        Alert.alert(
+          'No face detected',
+          'One of the photos didn’t have a clear face. Let’s retake all 3.',
+          [{ text: 'OK', onPress: () => { setPhotos([]); setAngleIndex(0); } }],
+        );
+      } else if (msg.includes('409')) {
+        Alert.alert(
+          'Already enrolled',
+          'A contact with this wallet already exists for you.',
+          [{ text: 'OK', onPress: () => router.back() }],
+        );
+      } else {
+        Alert.alert('Enrollment failed', msg);
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleCapture = async () => {
-    if (!cameraRef.current || capturing) return;
+    if (!cameraRef.current || capturing || uploading) return;
     setCapturing(true);
 
     try {
@@ -71,8 +118,7 @@ export default function EnrollScreen() {
       if (newPhotos.length < 3) {
         setAngleIndex(angleIndex + 1);
       } else {
-        Alert.alert('Contact Added', `${name} has been enrolled with ${newPhotos.length} photos.`);
-        router.back();
+        await uploadContact(newPhotos);
       }
     } catch (err: any) {
       Alert.alert('Error', err.message);
@@ -170,18 +216,25 @@ export default function EnrollScreen() {
               style={[
                 styles.dot,
                 i < photos.length && styles.dotDone,
-                i === angleIndex && styles.dotActive,
+                i === angleIndex && !uploading && styles.dotActive,
               ]}
             />
           ))}
         </View>
-        <TouchableOpacity
-          style={[styles.captureBtn, capturing && styles.btnDisabled]}
-          onPress={handleCapture}
-          disabled={capturing}
-        >
-          <View style={styles.captureBtnInner} />
-        </TouchableOpacity>
+        {uploading ? (
+          <ActivityIndicator size="large" color={Colors.palette.cyan400} />
+        ) : (
+          <TouchableOpacity
+            style={[styles.captureBtn, capturing && styles.btnDisabled]}
+            onPress={handleCapture}
+            disabled={capturing}
+          >
+            <View style={styles.captureBtnInner} />
+          </TouchableOpacity>
+        )}
+        {uploading && (
+          <Text style={styles.uploadingText}>Enrolling on server…</Text>
+        )}
       </View>
     </View>
   );
@@ -342,5 +395,10 @@ const styles = StyleSheet.create({
   },
   btnDisabled: {
     opacity: 0.5,
+  },
+  uploadingText: {
+    color: Colors.palette.cyan400,
+    fontSize: 14,
+    marginTop: 12,
   },
 });
