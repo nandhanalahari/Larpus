@@ -21,6 +21,23 @@ type ParseVoiceResponse =
   | { intent: 'pay'; amount_usd: number; confidence: number; raw_transcript: string }
   | { intent: 'unclear'; confidence: number; fallback: 'keypad' };
 
+type ProcessVoiceResponse =
+  | {
+      intent: 'pay';
+      amount_usd: number;
+      confidence: number;
+      raw_transcript: string;
+      contact_id?: string;
+    }
+  | {
+      intent: 'unclear';
+      confidence: number;
+      raw_transcript: string;
+      fallback: 'keypad';
+      reason?: string;
+      contact_id?: string;
+    };
+
 type ExecutePaymentResponse =
   | {
       status: 'paid';
@@ -87,6 +104,33 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ transcript, contact_id: contactId }),
     }),
+
+  processVoice: async (audioUri: string, contactId?: string): Promise<ProcessVoiceResponse> => {
+    const form = new FormData();
+    // expo-av returns a file:// URI. RN FormData accepts {uri, name, type} as a file.
+    const filename = audioUri.split('/').pop() || 'audio.m4a';
+    const ext = filename.split('.').pop()?.toLowerCase();
+    const type =
+      ext === 'wav'
+        ? 'audio/wav'
+        : ext === 'mp3'
+          ? 'audio/mpeg'
+          : ext === 'caf'
+            ? 'audio/x-caf'
+            : 'audio/m4a';
+    form.append('audio', { uri: audioUri, name: filename, type } as any);
+    if (contactId) form.append('contact_id', contactId);
+
+    const res = await fetch(`${API_BASE}/voice/process`, {
+      method: 'POST',
+      body: form as any,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`processVoice ${res.status}: ${body}`);
+    }
+    return res.json();
+  },
 
   executePayment: (params: {
     userId: string;

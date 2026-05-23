@@ -5,6 +5,12 @@ import { useAppStore } from '@/store/appStore';
 import { MIC_TIMEOUT_MS } from '@/constants/timing';
 import { MAX_PAYMENT_USD, MIN_PAYMENT_USD } from '@/constants/thresholds';
 
+type VoiceResult =
+  | { intent: 'pay'; amount: number; confidence: number; transcript: string }
+  | { intent: 'unclear'; reason: string; transcript: string; fallback?: 'keypad' }
+  | { intent: 'invalid'; reason: string; transcript: string; min?: number; max?: number }
+  | { intent: 'confirm_large'; amount: number; confidence: number; transcript: string };
+
 export function useVoice() {
   const {
     isListening,
@@ -15,6 +21,74 @@ export function useVoice() {
   } = useAppStore();
 
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stopResolverRef = useRef<((result: VoiceResult) => void) | null>(null);
+
+  const finishListening = useCallback(
+    async (cancelled: boolean): Promise<VoiceResult> => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      setListening(false);
+
+      const uri = await voiceService.stopRecording();
+
+      if (cancelled || !uri) {
+        return { intent: 'unclear', reason: cancelled ? 'cancelled' : 'no_audio', transcript: '' };
+      }
+
+      try {
+        const res = await api.processVoice(uri, recognizedContact?.id);
+        setTranscript(res.raw_transcript || '');
+
+        if (res.intent === 'pay') {
+          const amount = res.amount_usd;
+          if (amount <= 0) {
+            return { intent: 'invalid', reason: 'non_positive', transcript: res.raw_transcript };
+          }
+          if (amount < MIN_PAYMENT_USD) {
+            return {
+              intent: 'invalid',
+              reason: 'too_small',
+              min: MIN_PAYMENT_USD,
+              transcript: res.raw_transcript,
+            };
+          }
+          if (amount > MAX_PAYMENT_USD) {
+            return {
+              intent: 'confirm_large',
+              amount,
+              confidence: res.confidence,
+              transcript: res.raw_transcript,
+            };
+          }
+          setParsedAmount(amount);
+          return {
+            intent: 'pay',
+            amount,
+            confidence: res.confidence,
+            transcript: res.raw_transcript,
+          };
+        }
+
+        return {
+          intent: 'unclear',
+          reason: res.reason || 'unclear',
+          fallback: res.fallback,
+          transcript: res.raw_transcript || '',
+        };
+      } catch (err) {
+        console.warn('[Voice] processVoice failed:', err);
+        return {
+          intent: 'unclear',
+          reason: 'api_error',
+          fallback: 'keypad',
+          transcript: '',
+        };
+      }
+    },
+    [recognizedContact, setListening, setTranscript, setParsedAmount],
+  );
 
   const startListening = useCallback(async () => {
     const hasPermission = await voiceService.requestPermission();
@@ -24,68 +98,60 @@ export function useVoice() {
 
     setTranscript('');
     setParsedAmount(null);
-    setListening(true);
 
     const started = await voiceService.startRecording();
     if (!started) {
-      setListening(false);
       return { success: false, reason: 'start_failed' as const };
     }
 
+    setListening(true);
+
     timeoutRef.current = setTimeout(() => {
-      stopListening();
+      // Auto-stop on timeout. Resolve any pending awaiter so the UI can react.
+      finishListening(false).then((res) => stopResolverRef.current?.(res));
     }, MIC_TIMEOUT_MS);
 
     return { success: true };
-  }, [setListening, setTranscript, setParsedAmount]);
+  }, [setListening, setTranscript, setParsedAmount, finishListening]);
 
-  const stopListening = useCallback(async () => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
+  const stopListening = useCallback(async (): Promise<VoiceResult> => {
+    return finishListening(false);
+  }, [finishListening]);
 
-    setListening(false);
-    const uri = await voiceService.stopRecording();
+  const cancelListening = useCallback(async () => {
+    return finishListening(true);
+  }, [finishListening]);
 
-    return uri;
-  }, [setListening]);
-
+  // Legacy entry point — keep working if anything still calls parseTranscript directly.
   const parseTranscript = useCallback(
-    async (transcript: string) => {
+    async (transcript: string): Promise<VoiceResult> => {
       if (!transcript.trim()) {
-        return { intent: 'unclear' as const, reason: 'empty' };
+        return { intent: 'unclear', reason: 'empty', transcript };
       }
-
       if (!recognizedContact) {
-        return { intent: 'unclear' as const, reason: 'no_contact' };
+        return { intent: 'unclear', reason: 'no_contact', transcript };
       }
-
       try {
         const result = await api.parseVoice(transcript, recognizedContact.id);
-
         if (result.intent === 'pay') {
-          if (result.amount_usd <= 0) {
-            return { intent: 'invalid' as const, reason: 'non_positive' };
-          }
-          if (result.amount_usd < MIN_PAYMENT_USD) {
-            return { intent: 'invalid' as const, reason: 'too_small', min: MIN_PAYMENT_USD };
-          }
-          if (result.amount_usd > MAX_PAYMENT_USD) {
+          const amount = result.amount_usd;
+          if (amount <= 0) return { intent: 'invalid', reason: 'non_positive', transcript };
+          if (amount < MIN_PAYMENT_USD)
+            return { intent: 'invalid', reason: 'too_small', min: MIN_PAYMENT_USD, transcript };
+          if (amount > MAX_PAYMENT_USD)
             return {
-              intent: 'confirm_large' as const,
-              amount: result.amount_usd,
+              intent: 'confirm_large',
+              amount,
               confidence: result.confidence,
+              transcript,
             };
-          }
-          setParsedAmount(result.amount_usd);
-          return { intent: 'pay' as const, amount: result.amount_usd, confidence: result.confidence };
+          setParsedAmount(amount);
+          return { intent: 'pay', amount, confidence: result.confidence, transcript };
         }
-
-        return { intent: 'unclear' as const, fallback: 'keypad' };
+        return { intent: 'unclear', reason: 'unclear', fallback: 'keypad', transcript };
       } catch (err) {
         console.warn('[Voice] parse failed:', err);
-        return { intent: 'unclear' as const, reason: 'api_error', fallback: 'keypad' };
+        return { intent: 'unclear', reason: 'api_error', fallback: 'keypad', transcript };
       }
     },
     [recognizedContact, setParsedAmount],
@@ -97,5 +163,11 @@ export function useVoice() {
     };
   }, []);
 
-  return { isListening, startListening, stopListening, parseTranscript };
+  return {
+    isListening,
+    startListening,
+    stopListening,
+    cancelListening,
+    parseTranscript,
+  };
 }

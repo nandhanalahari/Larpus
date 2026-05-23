@@ -10,6 +10,7 @@ Pillow>=10.4.0
 httpx==0.27.0
 google-generativeai==0.8.0
 psutil==6.0.0
+python-multipart>=0.0.9
 
 # Face recognition. Installs cleanly on Linux/macOS.
 # On Windows, requires Visual C++ Build Tools — comment these out for local Windows dev.
