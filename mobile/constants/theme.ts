@@ -24,6 +24,8 @@ export const theme = {
     onSurface: '#e5e2e1',
     surfaceContainer: '#201f1f',
     error: '#ffb4ab',
+    success: '#14F195',
+    warn: '#FFB020',
     hardBorder: '#333333',
     panelBg: '#0A0A0A',
     black: '#020202',

@@ -96,6 +96,11 @@ type AppState = {
   setServerReady: (ready: boolean) => void;
   toggleDemoMode: () => void;
 
+  // Scan status (camera feedback)
+  scanStatus: 'idle' | 'scanning' | 'no_match' | 'offline' | 'no_wallet' | 'matched' | 'error';
+  scanMessage: string;
+  setScanStatus: (status: AppState['scanStatus'], message?: string) => void;
+
   // SOL price
   solPrice: number | null;
   solPriceFetchedAt: number | null;
@@ -175,6 +180,28 @@ export const useAppStore = create<AppState>((set) => ({
   demoMode: false,
   setServerReady: (ready) => set({ serverReady: ready }),
   toggleDemoMode: () => set((s) => ({ demoMode: !s.demoMode })),
+
+  scanStatus: 'idle',
+  scanMessage: 'Biometric syncing…',
+  setScanStatus: (status, message) =>
+    set({
+      scanStatus: status,
+      scanMessage:
+        message ??
+        (status === 'scanning'
+          ? 'Scanning for face…'
+          : status === 'no_match'
+          ? 'No match — tap to enroll'
+          : status === 'offline'
+          ? 'Backend offline'
+          : status === 'no_wallet'
+          ? 'Finish wallet setup'
+          : status === 'matched'
+          ? 'Identity locked'
+          : status === 'error'
+          ? 'Recognition failed'
+          : 'Biometric syncing…'),
+    }),
 
   solPrice: null,
   solPriceFetchedAt: null,

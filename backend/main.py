@@ -6,11 +6,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from database import connect_db, close_db
-from services.face_service import load_model, is_model_loaded
+from database import connect_db, close_db, is_connected
+from services.face_service import load_model, model_status
 from services.gemini_service import load_gemini
+from services.vector_index import ensure_vector_index, vector_index_status
 from routers import recognize, contacts, voice, payments, sol_price
-from models.schemas import HealthResponse
 
 
 @asynccontextmanager
@@ -18,6 +18,9 @@ async def lifespan(app: FastAPI):
     await connect_db()
     load_model()
     load_gemini()
+    if is_connected():
+        result = await ensure_vector_index()
+        print(f"[vector_index] {result}")
     yield
     await close_db()
 
@@ -46,11 +49,16 @@ app.include_router(sol_price.router, prefix="/api/v1")
 @app.get("/api/v1/health")
 async def health():
     mem = psutil.virtual_memory()
-    return HealthResponse(
-        status="ok",
-        model_loaded=is_model_loaded(),
-        memory_percent=mem.percent,
-    )
+    face = model_status()
+    vec = await vector_index_status() if is_connected() else {"present": False, "reason": "db not connected"}
+    return {
+        "status": "ok",
+        "model_loaded": face["model_loaded"],
+        "face": face,
+        "vector_index": vec,
+        "db_connected": is_connected(),
+        "memory_percent": mem.percent,
+    }
 
 
 if __name__ == "__main__":

@@ -49,6 +49,8 @@ export default function CameraScreen() {
     walletAddress,
     transcript,
     parsedAmount,
+    scanStatus,
+    scanMessage,
   } = useAppStore();
 
   const { recognize, reset: resetRecognition } = useFaceRecognition();
@@ -269,18 +271,38 @@ export default function CameraScreen() {
         {showScanChrome && (
           <View style={styles.overlay} pointerEvents="box-none">
             <View style={[styles.statusWrap, { paddingTop: insets.top + 16 }]}>
-              <View style={styles.statusPill}>
-                <View style={styles.statusDot} />
-                <Text style={styles.statusText}>
-                  {recognizedContact
-                    ? 'Identity locked'
-                    : 'Biometric Syncing…'}
-                </Text>
+              <View
+                style={[
+                  styles.statusPill,
+                  scanStatus === 'matched' && styles.statusPillMatched,
+                  (scanStatus === 'offline' || scanStatus === 'error') && styles.statusPillError,
+                  scanStatus === 'no_match' && styles.statusPillWarn,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.statusDot,
+                    scanStatus === 'matched' && { backgroundColor: theme.colors.success },
+                    (scanStatus === 'offline' || scanStatus === 'error') && {
+                      backgroundColor: theme.colors.error,
+                    },
+                    scanStatus === 'no_match' && { backgroundColor: theme.colors.warn ?? theme.colors.accent },
+                  ]}
+                />
+                <Text style={styles.statusText}>{scanMessage}</Text>
               </View>
               {demoMode && (
                 <View style={styles.demoBadge}>
                   <Text style={styles.demoText}>DEMO</Text>
                 </View>
+              )}
+              {scanStatus === 'no_match' && uiState === 'scanning' && (
+                <TouchableOpacity
+                  style={styles.enrollCta}
+                  onPress={() => router.push('/enroll')}
+                >
+                  <Text style={styles.enrollCtaText}>+ Enroll new face</Text>
+                </TouchableOpacity>
               )}
             </View>
 
@@ -410,6 +432,29 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: theme.colors.error,
+    letterSpacing: 1,
+  },
+  statusPillMatched: {
+    borderColor: theme.colors.success,
+  },
+  statusPillError: {
+    borderColor: theme.colors.error,
+  },
+  statusPillWarn: {
+    borderColor: theme.colors.warn ?? theme.colors.accent,
+  },
+  enrollCta: {
+    marginTop: 4,
+    backgroundColor: theme.colors.panelBg,
+    borderWidth: 1,
+    borderColor: theme.colors.hardBorder,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  enrollCtaText: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 12,
+    color: theme.colors.primary,
     letterSpacing: 1,
   },
 });

@@ -8,6 +8,7 @@ export function useFaceRecognition() {
   const {
     setRecognizedContact,
     clearRecognizedContact,
+    setScanStatus,
     selfContactId,
     walletAddress,
   } = useAppStore();
@@ -23,7 +24,12 @@ export function useFaceRecognition() {
 
       const currentRequestId = ++requestIdRef.current;
 
-      if (!walletAddress) return;
+      if (!walletAddress) {
+        setScanStatus('no_wallet', 'Finish wallet setup');
+        return;
+      }
+
+      setScanStatus('scanning');
 
       try {
         const result = await api.recognize(imageBase64, walletAddress);
@@ -32,11 +38,18 @@ export function useFaceRecognition() {
 
         if (!result.matched) {
           clearRecognizedContact();
+          setScanStatus(
+            'no_match',
+            result.confidence > 0
+              ? `No match (score ${result.confidence.toFixed(2)})`
+              : 'No face detected',
+          );
           return { matched: false as const, confidence: result.confidence };
         }
 
         if (result.contact.id === selfContactId) {
           clearRecognizedContact();
+          setScanStatus('no_match', "That's you — point at someone else");
           return { matched: false as const, isSelf: true };
         }
 
@@ -60,20 +73,28 @@ export function useFaceRecognition() {
           result.confidence < FACE_CONFIDENCE_HIGH && result.confidence >= FACE_CONFIDENCE_LOW;
 
         setRecognizedContact(contact, result.confidence, requiresConfirmation);
+        setScanStatus('matched', `Identity locked · ${(result.confidence * 100).toFixed(0)}%`);
 
         return { matched: true as const, contact, confidence: result.confidence, requiresConfirmation };
-      } catch (err) {
-        console.warn('[FaceRecognition] recognize failed:', err);
+      } catch (err: any) {
+        const msg = String(err?.message ?? err);
+        console.warn('[FaceRecognition] recognize failed:', msg);
+        if (/Network|fetch|timeout|503/i.test(msg)) {
+          setScanStatus('offline', 'Backend offline');
+        } else {
+          setScanStatus('error', 'Recognition failed');
+        }
         return { matched: false as const, error: true };
       }
     },
-    [walletAddress, selfContactId, setRecognizedContact, clearRecognizedContact],
+    [walletAddress, selfContactId, setRecognizedContact, clearRecognizedContact, setScanStatus],
   );
 
   const reset = useCallback(() => {
     requestIdRef.current++;
     clearRecognizedContact();
-  }, [clearRecognizedContact]);
+    setScanStatus('idle');
+  }, [clearRecognizedContact, setScanStatus]);
 
   return { recognize, reset };
 }
