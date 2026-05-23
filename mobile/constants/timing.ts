@@ -1,0 +1,9 @@
+export const MIC_TIMEOUT_MS = 10_000;
+export const TX_CONFIRMATION_TIMEOUT_MS = 30_000;
+export const PRICE_CACHE_TTL_MS = 30_000;
+export const PRICE_STALENESS_LIMIT_MS = 120_000;
+export const HEALTH_CHECK_INTERVAL_MS = 10_000;
+export const RECOGNIZE_DEBOUNCE_MS = 500;
+export const CAMERA_FRAME_INTERVAL_MS = 300;
+export const CALENDAR_DEFAULT_DAYS = 7;
+export const QUEUE_ITEM_DELAY_MS = 500;

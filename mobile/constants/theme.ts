@@ -1,0 +1,50 @@
+/** CIPHER design tokens — matches HTML mockups / Tailwind config */
+export const theme = {
+  colors: {
+    surfaceContainerHigh: '#2b2a2a',
+    primary: '#c9c6c5',
+    surface: '#141313',
+    onBackground: '#e5e2e1',
+    surfaceVariant: '#353434',
+    outline: '#8e9192',
+    surfaceContainerLowest: '#0e0e0e',
+    primaryContainer: '#020202',
+    background: '#141313',
+    onTertiary: '#00391f',
+    outlineVariant: '#444748',
+    onTertiaryContainer: '#008851',
+    tertiaryFixed: '#56ffa8',
+    onSecondaryContainer: '#b7b5b4',
+    tertiary: '#00e38b',
+    accent: '#14F195',
+    onPrimaryContainer: '#777675',
+    onSurfaceVariant: '#c4c7c7',
+    secondary: '#c8c6c5',
+    surfaceContainerLow: '#1c1b1b',
+    onSurface: '#e5e2e1',
+    surfaceContainer: '#201f1f',
+    error: '#ffb4ab',
+    hardBorder: '#333333',
+    panelBg: '#0A0A0A',
+    black: '#020202',
+  },
+  spacing: {
+    marginMobile: 16,
+    marginDesktop: 40,
+    gutter: 16,
+    unit: 4,
+  },
+  radius: {
+    default: 2,
+    lg: 4,
+    xl: 8,
+    full: 12,
+  },
+  fonts: {
+    body: 'System',
+    mono: 'SpaceMono',
+    headline: 'System',
+  },
+} as const;
+
+export type Theme = typeof theme;
