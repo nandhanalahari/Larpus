@@ -1,21 +1,22 @@
 import json
 import re
+import datetime
 from config import get_settings
 
-_model = None
+_client = None
+_model_name = "gemini-2.5-flash"
 
 
 def load_gemini():
-    global _model
+    global _client
     settings = get_settings()
     if not settings.gemini_api_key:
         print("[Gemini] No API key configured -- voice parsing disabled")
         return
 
-    import google.generativeai as genai
-    genai.configure(api_key=settings.gemini_api_key)
-    _model = genai.GenerativeModel("gemini-1.5-flash")
-    print("[Gemini] Model ready")
+    from google import genai
+    _client = genai.Client(api_key=settings.gemini_api_key)
+    print(f"[Gemini] Client ready ({_model_name})")
 
 
 SYSTEM_PROMPT = """You are a payment intent parser. Given a voice transcript, extract the payment amount in USD, the recipient's name, and any specified due date or scheduling date.
@@ -36,20 +37,18 @@ Rules:
 
 
 async def parse_payment_intent(transcript: str) -> dict:
-    if _model is None:
+    if _client is None:
         return _fallback_parse(transcript)
 
     try:
-        import datetime
-        now = datetime.datetime.now()
-        date_str = now.strftime("%A, %B %d, %Y")
+        date_str = datetime.datetime.now().strftime("%A, %B %d, %Y")
         formatted_prompt = SYSTEM_PROMPT.format(current_date_info=date_str)
 
-        response = _model.generate_content(
-            f"{formatted_prompt}\n\nTranscript: \"{transcript}\""
+        response = _client.models.generate_content(
+            model=_model_name,
+            contents=f"{formatted_prompt}\n\nTranscript: \"{transcript}\"",
         )
-        text = response.text.strip()
-        text = text.strip("`").strip()
+        text = (response.text or "").strip().strip("`").strip()
         if text.startswith("json"):
             text = text[4:].strip()
         result = json.loads(text)
