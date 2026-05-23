@@ -8,7 +8,8 @@ import { elevenlabsService } from '@/services/elevenlabs';
 import Colors from '@/constants/Colors';
 
 export default function WalletSetup() {
-  const [name, setName] = useState('');
+  const storedName = useAppStore((s) => s.userName);
+  const [name, setName] = useState(storedName ?? '');
   const [loading, setLoading] = useState(false);
   const { initWallet } = useWallet();
   const { setOnboardingStep } = useAppStore();

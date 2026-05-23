@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { CipherIcon } from '@/components/ui/CipherIcon';
+import { useAppStore } from '@/store/appStore';
 import { theme } from '@/constants/theme';
 
 export default function SignupScreen() {
@@ -21,6 +22,7 @@ export default function SignupScreen() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const setUser = useAppStore((s) => s.setUser);
 
   const isValidName = name.trim().length >= 2;
   const isValidEmail = /\S+@\S+\.\S+/.test(email.trim());
@@ -30,6 +32,9 @@ export default function SignupScreen() {
 
   const handleContinue = () => {
     if (!canContinue) return;
+    // Stash the name so wallet.tsx can pre-populate it.
+    // walletAddress stays null until the keypair is generated.
+    setUser(name.trim(), '');
     router.replace('/onboarding/wallet');
   };
 

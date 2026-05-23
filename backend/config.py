@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     port: int = 8000
     solana_rpc_url: str = "https://api.devnet.solana.com"
     solana_cluster: str = "devnet"
+    # Upstream backend that has heavy deps (InsightFace, etc.).
+    # If set, recognize/voice/contacts/payments calls are proxied there.
+    upstream_api_base: str = "http://134.209.216.232:8000/api/v1"
 
     class Config:
         env_file = ".env"

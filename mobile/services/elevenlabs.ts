@@ -6,6 +6,7 @@ const BASE_URL = 'https://api.elevenlabs.io/v1';
 
 type VoiceLine =
   | 'paid_confirmation'
+  | 'deposit_received'
   | 'insufficient_funds'
   | 'tx_failed'
   | 'queue_added'
@@ -18,6 +19,8 @@ type VoiceLine =
 
 const lineTemplates: Record<VoiceLine, (...args: string[]) => string> = {
   paid_confirmation: (amount, name) => `Paid. ${amount} sent to ${name}. Confirmed on Solana.`,
+  deposit_received: (amount, name) =>
+    `Deposit received. ${amount} from ${name}. Confirmed on Solana.`,
   insufficient_funds: () => `Not enough funds. I've saved this and set a reminder for next week.`,
   tx_failed: () => `Transaction failed. Please try again.`,
   queue_added: (amount, name) => `${amount} added to queue for ${name}.`,

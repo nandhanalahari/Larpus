@@ -1,7 +1,8 @@
-import { Tabs } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import { StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { theme } from '@/constants/theme';
+import { useAppStore } from '@/store/appStore';
 
 export const unstable_settings = {
   initialRouteName: 'profile',
@@ -24,6 +25,13 @@ function TabIcon({
 }
 
 export default function TabLayout() {
+  const onboardingComplete = useAppStore((s) => s.onboardingComplete);
+  const walletAddress = useAppStore((s) => s.walletAddress);
+
+  if (!onboardingComplete || !walletAddress) {
+    return <Redirect href="/onboarding/login" />;
+  }
+
   return (
     <Tabs
       initialRouteName="profile"

@@ -20,14 +20,17 @@ export function useWallet() {
   const initWallet = useCallback(async (name: string) => {
     const { publicKey } = await solanaService.createWallet();
     setUser(name, publicKey);
-    const balance = await solanaService.getBalance(publicKey).catch(() => 0);
-    setWalletBalance(balance);
+    const account = await api.ensureWalletAccount({ wallet: publicKey, name });
+    setWalletBalance(account.balance_sol);
     return publicKey;
   }, [setUser, setWalletBalance]);
 
   const refreshBalance = useCallback(async () => {
     if (!walletAddress) return 0;
-    const balance = await solanaService.getBalance(walletAddress);
+    const balance = await api
+      .getWalletBalance(walletAddress)
+      .then((account) => account.balance_sol)
+      .catch(() => solanaService.getBalance(walletAddress));
     setWalletBalance(balance);
     return balance;
   }, [walletAddress, setWalletBalance]);
@@ -78,7 +81,10 @@ export function useWallet() {
       const publicKey = keypair.publicKey.toBase58();
       const currentName = useAppStore.getState().userName;
       setUser(currentName ?? '', publicKey);
-      const balance = await solanaService.getBalance(publicKey).catch(() => 0);
+      const balance = await api
+        .ensureWalletAccount({ wallet: publicKey, name: currentName })
+        .then((account) => account.balance_sol)
+        .catch(() => solanaService.getBalance(publicKey).catch(() => 0));
       setWalletBalance(balance);
       return publicKey;
     }
@@ -100,7 +106,10 @@ export function useWallet() {
     async (secretKeyArray: number[], name?: string) => {
       const publicKey = await solanaService.importWallet(secretKeyArray);
       setUser(name ?? useAppStore.getState().userName ?? '', publicKey);
-      const balance = await solanaService.getBalance(publicKey).catch(() => 0);
+      const balance = await api
+        .ensureWalletAccount({ wallet: publicKey, name })
+        .then((account) => account.balance_sol)
+        .catch(() => solanaService.getBalance(publicKey).catch(() => 0));
       setWalletBalance(balance);
       return publicKey;
     },

@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { useAppStore, Contact, QueueItem } from '@/store/appStore';
-import { solanaService } from '@/services/solana';
+import { api } from '@/services/api';
 import { elevenlabsService } from '@/services/elevenlabs';
 import { cacheService } from '@/services/cache';
 import { FEE_BUFFER_SOL } from '@/constants/thresholds';
@@ -16,8 +16,9 @@ export function useQueue() {
     walletAddress,
     walletBalanceSol,
     solPrice,
-    addTransaction,
+    userName,
     addDebt,
+    setWalletBalance,
   } = useAppStore();
 
   const isExecutingRef = useRef(false);
@@ -56,9 +57,10 @@ export function useQueue() {
         }
 
         const amountSol = item.amountUsd / solPrice;
-        const canPay = await solanaService.canAfford(walletAddress, amountSol);
 
-        if (!canPay) {
+        // Use the cipher.users MongoDB balance — the $1000 starting balance
+        // is the source of truth, not the Solana devnet balance.
+        if (walletBalanceSol < amountSol + FEE_BUFFER_SOL) {
           updateQueueItem(item.id, { status: 'failed', error: 'Insufficient balance' });
           addDebt({
             id: `debt-${Date.now()}`,
@@ -72,27 +74,24 @@ export function useQueue() {
           continue;
         }
 
-        const { signature } = await solanaService.sendPayment(
-          item.contact.solanaWalletAddress,
+        // Single call: check balance → debit sender → credit receiver →
+        // write to cipher.transactions → write to cipher.ledger
+        const result = await api.transferFunds({
+          fromWallet: walletAddress,
+          toWallet: item.contact.solanaWalletAddress,
           amountSol,
-        );
+          amountUsd: item.amountUsd,
+          senderDisplayName: userName ?? null,
+        });
 
-        updateQueueItem(item.id, { status: 'confirmed', txSignature: signature });
+        api
+          .getWalletBalance(walletAddress)
+          .then((account) => setWalletBalance(account.balance_sol))
+          .catch((err) => console.warn('[wallet] refresh after queue payment failed:', err));
+
+        updateQueueItem(item.id, { status: 'confirmed', txSignature: result.signature });
         successCount++;
         totalPaidUsd += item.amountUsd;
-
-        addTransaction({
-          id: `tx-${Date.now()}`,
-          debtId: '',
-          contactName: item.contact.name,
-          amountUsd: item.amountUsd,
-          amountSol,
-          solPrice,
-          signature,
-          status: 'confirmed',
-          createdAt: new Date().toISOString(),
-          confirmedAt: new Date().toISOString(),
-        });
       } catch (err: any) {
         updateQueueItem(item.id, {
           status: 'failed',
@@ -115,7 +114,7 @@ export function useQueue() {
     }
 
     return { successCount, totalPaidUsd };
-  }, [queue, walletAddress, solPrice, updateQueueItem, addTransaction, addDebt]);
+  }, [queue, walletAddress, solPrice, userName, updateQueueItem, addDebt, setWalletBalance]);
 
   return {
     queue,

@@ -42,6 +42,10 @@ async def close_db():
 
 
 async def _ensure_indexes():
+    users = _db.users
+    await users.create_index("wallet_address", unique=True, sparse=True)
+    await users.create_index("solana_wallet_address", unique=True, sparse=True)
+
     contacts = _db.contacts
     await contacts.create_index("owner_user_id")
     await contacts.create_index("solana_wallet_address", sparse=True)
@@ -53,6 +57,21 @@ async def _ensure_indexes():
 
     transactions = _db.transactions
     await transactions.create_index("debt_id")
+    await transactions.create_index("signature", unique=True, sparse=True)
+    await transactions.create_index("transaction_id", unique=True, sparse=True)
+    await transactions.create_index("from_wallet")
+    await transactions.create_index("to_wallet")
+    await transactions.create_index("status")
+    await transactions.create_index([("block_time", -1)])
+
+    # Double-entry ledger: one row per (signature, wallet) so each side of a
+    # transfer is queryable directly by wallet -> direction.
+    ledger = _db.ledger
+    await ledger.create_index(
+        [("signature", 1), ("wallet", 1)], unique=True, name="sig_wallet_unique"
+    )
+    await ledger.create_index([("wallet", 1), ("block_time", -1)])
+    await ledger.create_index([("wallet", 1), ("direction", 1), ("block_time", -1)])
 
 
 def is_connected() -> bool:
@@ -77,3 +96,7 @@ def get_debts_collection():
 
 def get_transactions_collection():
     return _db.transactions
+
+
+def get_ledger_collection():
+    return _db.ledger

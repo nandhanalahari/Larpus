@@ -1,5 +1,12 @@
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://134.209.216.232:8000/api/v1';
 
+// Optional separate backend for ledger writes / incoming poll / history.
+// Defaults to API_BASE so a single-server deployment still works.
+const LEDGER_BASE = process.env.EXPO_PUBLIC_LEDGER_BASE_URL ?? API_BASE;
+
+console.log(`[API] base URL: ${API_BASE}`);
+console.log(`[API] ledger URL: ${LEDGER_BASE}`);
+
 type RecognizeResponse =
   | {
       matched: true;
@@ -72,6 +79,32 @@ type SolPriceResponse = {
   source: string;
 };
 
+type WalletBalanceResponse = {
+  wallet: string;
+  balance_sol: number;
+  starting_balance_usd: number;
+  starting_sol_price: number | null;
+};
+
+export type InitiatedTransaction = {
+  transaction_id: string;
+  from_wallet: string;
+  to_wallet: string;
+  amount_sol: number;
+  amount_usd: number | null;
+  status: string;
+};
+
+export type TransferResult = {
+  ok: boolean;
+  signature: string;
+  from_wallet: string;
+  to_wallet: string;
+  amount_sol: number;
+  amount_usd: number | null;
+  status: string;
+};
+
 type HealthResponse = {
   status: string;
   model_loaded: boolean;
@@ -98,6 +131,22 @@ export type TransactionHistoryResponse = {
   transactions: HistoryTransaction[];
 };
 
+export type IncomingPaymentDto = {
+  signature: string;
+  from_wallet: string;
+  sender_name: string | null;
+  amount_sol: number;
+  amount_usd: number | null;
+  block_time: number;
+  explorer_url: string;
+};
+
+export type IncomingPaymentsResponse = {
+  wallet: string;
+  synced: number;
+  payments: IncomingPaymentDto[];
+};
+
 export type DebtRecord = {
   debt_id: string;
   from_user_id: string;
@@ -121,7 +170,15 @@ export type UserDebtsResponse = {
 };
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  return requestAt<T>(API_BASE, path, options);
+}
+
+async function requestAt<T>(
+  base: string,
+  path: string,
+  options?: RequestInit,
+): Promise<T> {
+  const res = await fetch(`${base}${path}`, {
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
@@ -221,10 +278,151 @@ export const api = {
 
   getSolPrice: () => request<SolPriceResponse>('/sol/price'),
 
+  ensureWalletAccount: (params: { wallet: string; name?: string | null }) =>
+    requestAt<WalletBalanceResponse>(LEDGER_BASE, '/wallets', {
+      method: 'POST',
+      body: JSON.stringify({
+        wallet: params.wallet,
+        name: params.name ?? null,
+      }),
+    }),
+
+  getWalletBalance: (wallet: string) =>
+    requestAt<WalletBalanceResponse>(
+      LEDGER_BASE,
+      `/wallets/${encodeURIComponent(wallet)}/balance`,
+    ),
+
+  /**
+   * Execute a complete app-level transfer in one call.
+   *
+   * Checks sender balance → debits sender → credits receiver → writes to
+   * cipher.transactions (from_wallet, to_wallet, amount_sol, direction) →
+   * writes to cipher.ledger so the receiver's notification fires immediately.
+   *
+   * Uses a synthetic CIPHER_ signature. No Solana devnet call needed —
+   * the $1000 MongoDB balance is the source of truth.
+   *
+   * Throws HTTP 402 if the sender has insufficient balance.
+   */
+  transferFunds: (params: {
+    fromWallet: string;
+    toWallet: string;
+    amountSol: number;
+    amountUsd?: number;
+    senderDisplayName?: string | null;
+  }) =>
+    requestAt<TransferResult>(LEDGER_BASE, '/transactions/transfer', {
+      method: 'POST',
+      body: JSON.stringify({
+        from_wallet: params.fromWallet,
+        to_wallet: params.toWallet,
+        amount_sol: params.amountSol,
+        amount_usd: params.amountUsd ?? null,
+        sender_display_name: params.senderDisplayName ?? null,
+      }),
+    }),
+
+  /**
+   * Step 1 of the payment flow.
+   * Creates a pending record in cipher.transactions with both wallet addresses,
+   * amount, and direction (from → to) before any on-chain call is made.
+   * Returns the transaction_id and the stored to_wallet + amount_sol so the
+   * caller can drive the Solana transfer from the authoritative record.
+   */
+  initiateTransaction: (params: {
+    fromWallet: string;
+    toWallet: string;
+    amountSol: number;
+    amountUsd?: number;
+    senderDisplayName?: string | null;
+  }) =>
+    requestAt<InitiatedTransaction>(LEDGER_BASE, '/transactions/initiate', {
+      method: 'POST',
+      body: JSON.stringify({
+        from_wallet: params.fromWallet,
+        to_wallet: params.toWallet,
+        amount_sol: params.amountSol,
+        amount_usd: params.amountUsd ?? null,
+        sender_display_name: params.senderDisplayName ?? null,
+      }),
+    }),
+
+  /**
+   * Step 3 of the payment flow (step 2 is the on-chain sendPayment call).
+   * Links the on-chain signature to the pending record, applies the wallet
+   * balance debit/credit, and mirrors to the ledger so the receiver's
+   * notification poll immediately picks it up.
+   */
+  confirmTransaction: (params: {
+    transactionId: string;
+    signature: string;
+    blockTime?: number;
+    slot?: number;
+  }) =>
+    requestAt<{ ok: boolean; transaction_id: string; signature: string; status: string }>(
+      LEDGER_BASE,
+      `/transactions/${encodeURIComponent(params.transactionId)}/confirm`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          signature: params.signature,
+          block_time: params.blockTime ?? null,
+          slot: params.slot ?? null,
+        }),
+      },
+    ),
+
   getTransactionHistory: (wallet: string, limit = 30, sync = true) =>
-    request<TransactionHistoryResponse>(
+    requestAt<TransactionHistoryResponse>(
+      LEDGER_BASE,
       `/transactions/${encodeURIComponent(wallet)}?limit=${limit}&sync=${sync ? 'true' : 'false'}`,
     ),
+
+  recordTransaction: (params: {
+    signature: string;
+    fromWallet: string;
+    toWallet: string;
+    amountSol: number;
+    amountUsd?: number;
+    senderDisplayName?: string;
+  }) =>
+    requestAt<{ ok: boolean; signature: string }>(LEDGER_BASE, '/transactions/record', {
+      method: 'POST',
+      body: JSON.stringify({
+        signature: params.signature,
+        from_wallet: params.fromWallet,
+        to_wallet: params.toWallet,
+        amount_sol: params.amountSol,
+        amount_usd: params.amountUsd,
+        sender_display_name: params.senderDisplayName,
+      }),
+    }),
+
+  pollIncomingPayments: (wallet: string, excludeSignatures = '', sync = true) =>
+    requestAt<IncomingPaymentsResponse>(
+      LEDGER_BASE,
+      `/transactions/${encodeURIComponent(wallet)}/incoming?sync=${sync ? 'true' : 'false'}&exclude=${encodeURIComponent(excludeSignatures)}`,
+    ),
+
+  /**
+   * Write a confirmed transfer to cipher.transactions in MongoDB.
+   * Records from_wallet, to_wallet, amount_sol/usd, and direction so both
+   * parties can query their history. Also updates cipher.users balances and
+   * pushes to cipher.ledger so the receiver's notification poll fires.
+   * Throws on failure — callers should handle and decide UI outcome.
+   */
+  persistConfirmedPayment: async (params: {
+    signature: string;
+    fromWallet: string;
+    toWallet: string;
+    amountSol: number;
+    amountUsd?: number;
+    senderDisplayName?: string;
+  }) => {
+    const res = await api.recordTransaction(params);
+    console.log(`[cipher] transaction recorded: sig=${res.signature.slice(0, 20)}...`);
+  },
 
   createDebt: (params: {
     fromUserId: string;
@@ -234,7 +432,7 @@ export const api = {
     amountUsd: number;
     dueDate?: string | null;
   }) =>
-    request<DebtRecord>('/debts', {
+    requestAt<DebtRecord>(LEDGER_BASE, '/debts', {
       method: 'POST',
       body: JSON.stringify({
         from_user_id: params.fromUserId,
@@ -247,10 +445,14 @@ export const api = {
     }),
 
   getUserDebts: (wallet: string) =>
-    request<UserDebtsResponse>(`/debts/by-user/${encodeURIComponent(wallet)}`),
+    requestAt<UserDebtsResponse>(
+      LEDGER_BASE,
+      `/debts/by-user/${encodeURIComponent(wallet)}`,
+    ),
 
   markDebtPaid: (debtId: string, transactionSignature?: string) =>
-    request<DebtRecord>(
+    requestAt<DebtRecord>(
+      LEDGER_BASE,
       `/debts/${encodeURIComponent(debtId)}/mark-paid${transactionSignature ? `?transaction_signature=${encodeURIComponent(transactionSignature)}` : ''}`,
       { method: 'POST' },
     ),

@@ -94,6 +94,9 @@ type AppState = {
   addDebt: (debt: Debt) => void;
   updateDebt: (id: string, update: Partial<Debt>) => void;
 
+  // Auth
+  signOut: () => void;
+
   // Server
   serverReady: boolean;
   demoMode: boolean;
@@ -178,6 +181,26 @@ export const useAppStore = create<AppState>()(
     set((s) => ({
       debts: s.debts.map((d) => (d.id === id ? { ...d, ...update } : d)),
     })),
+
+  signOut: () =>
+    set({
+      onboardingComplete: false,
+      walletSetup: false,
+      selfEnrolled: false,
+      firstContactAdded: false,
+      userName: null,
+      walletAddress: null,
+      walletBalanceSol: 0,
+      selfContactId: null,
+      transactions: [],
+      debts: [],
+      queue: [],
+      recognizedContact: null,
+      recognitionConfidence: 0,
+      requiresConfirmation: false,
+      solPrice: null,
+      solPriceFetchedAt: null,
+    }),
 
   serverReady: false,
   demoMode: false,

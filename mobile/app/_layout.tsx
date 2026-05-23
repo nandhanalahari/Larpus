@@ -6,10 +6,12 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { StatusBar } from 'react-native';
+import { StatusBar, StyleSheet, View } from 'react-native';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { IncomingPaymentToast } from '@/components/IncomingPaymentToast';
+import { useIncomingPayments } from '@/hooks/useIncomingPayments';
 import { solanaService } from '@/services/solana';
 import { useAppStore } from '@/store/appStore';
 
@@ -80,7 +82,32 @@ export default function RootLayout() {
           options={{ presentation: 'modal' }}
         />
       </Stack>
+      <GlobalIncomingToastHost />
     </GestureHandlerRootView>
     </SafeAreaProvider>
   );
 }
+
+function GlobalIncomingToastHost() {
+  const insets = useSafeAreaInsets();
+  const { activePayment, dismissActive } = useIncomingPayments();
+  if (!activePayment) return null;
+  return (
+    <View
+      style={[styles.toastHost, { top: insets.top + 8 }]}
+      pointerEvents="box-none"
+    >
+      <IncomingPaymentToast payment={activePayment} onDismiss={dismissActive} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  toastHost: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 9999,
+    elevation: 24,
+  },
+});

@@ -18,7 +18,6 @@ import { ProfileCard } from '@/components/ProfileCard';
 import { VoiceListener } from '@/components/VoiceListener';
 import { PaymentStatus } from '@/components/PaymentStatus';
 import { ScanReticle } from '@/components/ScanReticle';
-import { solanaService } from '@/services/solana';
 import { api } from '@/services/api';
 import { elevenlabsService } from '@/services/elevenlabs';
 import { theme } from '@/constants/theme';
@@ -51,6 +50,7 @@ export default function CameraScreen() {
     demoMode,
     solPrice,
     walletAddress,
+    userName,
     transcript,
     parsedAmount,
     parsedDueDate,
@@ -215,54 +215,34 @@ export default function CameraScreen() {
           return;
         }
 
-        if (demoMode) {
-          const fakeSig = 'DEMO' + Math.random().toString(36).substring(2, 14);
-          setPaymentResult({
-            status: 'confirmed',
-            amountUsd: amount,
-            amountSol,
-            txSignature: fakeSig,
-            dueDate,
-          });
-          elevenlabsService.speakLine(
-            'paid_confirmation',
-            `$${amount}`,
-            recognizedContact.name,
-          );
-          return;
-        }
-
-        const { signature } = await solanaService.sendPayment(
-          recognizedContact.solanaWalletAddress,
-          amountSol,
+        // ── Execute the transfer via the backend ──
+        // POST /transactions/transfer atomically:
+        //   1. Checks sender has enough in cipher.users ($1000 starting balance)
+        //   2. Debits sender, credits receiver in cipher.users
+        //   3. Writes to cipher.transactions with from_wallet, to_wallet, amount
+        //   4. Mirrors to cipher.ledger → receiver notification fires in ~3 s
+        // Uses a CIPHER_ synthetic signature — no Solana devnet call needed.
+        console.log(
+          `[pay] transferring ${amountSol} SOL to ${recognizedContact.solanaWalletAddress.slice(0, 8)}...`,
         );
+        const result = await api.transferFunds({
+          fromWallet: walletAddress,
+          toWallet: recognizedContact.solanaWalletAddress,
+          amountSol,
+          amountUsd: amount,
+          senderDisplayName: userName ?? null,
+        });
+        console.log(`[cipher] transfer confirmed sig=${result.signature.slice(0, 20)}...`);
 
         setPaymentResult({
           status: 'confirmed',
           amountUsd: amount,
           amountSol,
-          txSignature: signature,
+          txSignature: result.signature,
           dueDate,
         });
 
-        useAppStore.getState().addTransaction({
-          id: `tx-${Date.now()}`,
-          debtId: '',
-          contactName: recognizedContact.name,
-          amountUsd: amount,
-          amountSol,
-          solPrice: solPrice!,
-          signature,
-          status: 'confirmed',
-          createdAt: new Date().toISOString(),
-          confirmedAt: new Date().toISOString(),
-        });
-
-        elevenlabsService.speakLine(
-          'paid_confirmation',
-          `$${amount}`,
-          recognizedContact.name,
-        );
+        elevenlabsService.speakLine('paid_confirmation', `$${amount}`, recognizedContact.name);
         refreshBalance();
       } catch (err: any) {
         setPaymentResult({
@@ -279,6 +259,7 @@ export default function CameraScreen() {
       walletAddress,
       demoMode,
       solPrice,
+      userName,
       canAfford,
       usdToSol,
       refreshBalance,

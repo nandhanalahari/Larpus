@@ -38,8 +38,9 @@ function relativeTime(blockTime: number): string {
 }
 
 export default function HistoryScreen() {
-  const { walletAddress, debts } = useAppStore();
+  const { walletAddress } = useAppStore();
   const [transactions, setTransactions] = useState<HistoryTransaction[]>([]);
+  const [pendingDebts, setPendingDebts] = useState<Debt[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,8 +55,29 @@ export default function HistoryScreen() {
       else setRefreshing(true);
       setError(null);
       try {
-        const res = await api.getTransactionHistory(walletAddress, 30, true);
-        setTransactions(res.transactions);
+        const [historyRes, debtsRes] = await Promise.allSettled([
+          api.getTransactionHistory(walletAddress, 30, true),
+          api.getUserDebts(walletAddress),
+        ]);
+        if (historyRes.status === 'fulfilled') {
+          setTransactions(historyRes.value.transactions);
+        } else {
+          throw new Error(historyRes.reason?.message ?? 'Failed to load history');
+        }
+        if (debtsRes.status === 'fulfilled') {
+          const pending = debtsRes.value.owed_by_me
+            .filter((d) => d.status === 'pending' || d.status === 'scheduled')
+            .map((d) => ({
+              id: d.debt_id,
+              contactId: d.to_contact_id,
+              contactName: d.counterparty_name,
+              amountUsd: d.amount_usd,
+              status: d.status as Debt['status'],
+              createdAt: d.created_at,
+              dueDate: d.due_date ?? undefined,
+            }));
+          setPendingDebts(pending);
+        }
       } catch (err: any) {
         setError(err?.message ?? 'Failed to load history');
       } finally {
@@ -83,8 +105,6 @@ export default function HistoryScreen() {
       };
     }, [fetchHistory]),
   );
-
-  const pendingDebts = debts.filter((d) => d.status === 'pending');
 
   const listData: ListItem[] = [];
   if (pendingDebts.length > 0) {
@@ -158,7 +178,9 @@ export default function HistoryScreen() {
               </Text>
             ) : null}
             <View style={styles.metaRow}>
-              <Text style={styles.rowSub}>{relativeTime(tx.block_time)}</Text>
+              <Text style={styles.rowSub}>
+                {sent ? 'Sent to' : 'Received from'} · {relativeTime(tx.block_time)}
+              </Text>
               <View style={styles.slotPill}>
                 <Text style={styles.slotPillText}>slot {tx.slot}</Text>
               </View>
@@ -166,7 +188,9 @@ export default function HistoryScreen() {
           </View>
         </View>
         <View style={styles.rowRight}>
-          <Text style={[styles.amount, sent && styles.amountSent]}>
+          <Text
+            style={[styles.amount, sent ? styles.amountSent : styles.amountReceived]}
+          >
             {sent ? '−' : '+'}
             {tx.amount_sol.toFixed(4)} SOL
           </Text>
@@ -406,6 +430,9 @@ const styles = StyleSheet.create({
   },
   amountSent: {
     color: theme.colors.outline,
+  },
+  amountReceived: {
+    color: theme.colors.tertiary,
   },
   amountPending: {
     color: theme.colors.error,

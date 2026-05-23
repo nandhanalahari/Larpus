@@ -140,6 +140,94 @@ class TransactionHistoryResponse(BaseModel):
     transactions: list[HistoryTransaction]
 
 
+class RecordTransactionRequest(BaseModel):
+    signature: str
+    from_wallet: str
+    to_wallet: str
+    amount_sol: float
+    amount_usd: float | None = None
+    sender_display_name: str | None = None
+    block_time: int | None = None
+    slot: int | None = None
+
+
+class RecordTransactionResponse(BaseModel):
+    ok: bool = True
+    signature: str
+
+
+# ── /transactions/initiate ──
+
+class InitiateTransactionRequest(BaseModel):
+    from_wallet: str
+    to_wallet: str
+    amount_sol: float
+    amount_usd: float | None = None
+    sender_display_name: str | None = None
+
+
+class InitiateTransactionResponse(BaseModel):
+    transaction_id: str
+    from_wallet: str
+    to_wallet: str
+    amount_sol: float
+    amount_usd: float | None = None
+    status: str = "pending"
+
+
+class ConfirmTransactionRequest(BaseModel):
+    signature: str
+    block_time: int | None = None
+    slot: int | None = None
+
+
+class ConfirmTransactionResponse(BaseModel):
+    ok: bool = True
+    transaction_id: str
+    signature: str
+    status: str = "confirmed"
+
+
+# ── /transactions/transfer ──
+
+class TransferResponse(BaseModel):
+    ok: bool = True
+    signature: str
+    from_wallet: str
+    to_wallet: str
+    amount_sol: float
+    amount_usd: float | None = None
+    status: str = "confirmed"
+
+
+class WalletAccountRequest(BaseModel):
+    wallet: str
+    name: str | None = None
+
+
+class WalletBalanceResponse(BaseModel):
+    wallet: str
+    balance_sol: float
+    starting_balance_usd: float = 1000.0
+    starting_sol_price: float | None = None
+
+
+class IncomingPaymentNotification(BaseModel):
+    signature: str
+    from_wallet: str
+    sender_name: str | None = None
+    amount_sol: float
+    amount_usd: float | None = None
+    block_time: int
+    explorer_url: str
+
+
+class IncomingPaymentsResponse(BaseModel):
+    wallet: str
+    synced: int
+    payments: list[IncomingPaymentNotification]
+
+
 # ── /debts ──
 
 class CreateDebtRequest(BaseModel):

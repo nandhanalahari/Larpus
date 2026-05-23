@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException
-from datetime import datetime, timezone, timedelta
+from fastapi import APIRouter
+from datetime import datetime, timezone
 from models.schemas import ExecutePaymentRequest
 from services.price_service import get_sol_price
-from database import get_debts_collection, get_transactions_collection
+from services import solana_history
+from database import get_debts_collection
 from bson import ObjectId
 
 router = APIRouter()
@@ -16,7 +17,6 @@ async def execute_payment(req: ExecutePaymentRequest):
 
     now = datetime.now(timezone.utc)
     debts_col = get_debts_collection()
-    tx_col = get_transactions_collection()
 
     debt_doc = {
         "from_user_id": req.user_id,
@@ -34,19 +34,14 @@ async def execute_payment(req: ExecutePaymentRequest):
 
     tx_sig = f"devnet_{ObjectId()}"
 
-    tx_doc = {
-        "debt_id": debt_id,
-        "from_wallet": req.from_wallet,
-        "to_wallet": req.to_wallet,
-        "amount_sol": amount_sol,
-        "amount_usd": req.amount_usd,
-        "sol_price": sol_price,
-        "solana_signature": tx_sig,
-        "status": "confirmed",
-        "created_at": now.isoformat(),
-        "confirmed_at": now.isoformat(),
-    }
-    await tx_col.insert_one(tx_doc)
+    await solana_history.record_confirmed_transfer(
+        signature=tx_sig,
+        from_wallet=req.from_wallet,
+        to_wallet=req.to_wallet,
+        amount_sol=amount_sol,
+        amount_usd=req.amount_usd,
+        block_time=int(now.timestamp()),
+    )
 
     return {
         "status": "paid",

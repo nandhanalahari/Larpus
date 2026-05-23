@@ -28,8 +28,7 @@ export default function ProfileScreen() {
     demoMode,
     toggleDemoMode,
     serverReady,
-    debts,
-    transactions,
+    signOut,
   } = useAppStore();
 
   const { refreshBalance } = useWallet();
@@ -38,23 +37,37 @@ export default function ProfileScreen() {
   const [importing, setImporting] = useState(false);
   const [showImport, setShowImport] = useState(false);
 
-  const pendingDebtCount = debts.filter((d) => d.status === 'pending').length;
-  const totalPaid = transactions
-    .filter((t) => t.status === 'confirmed')
-    .reduce((sum, t) => sum + t.amountUsd, 0);
-
+  // Stats pulled from MongoDB — not local device storage
+  const [txCount, setTxCount] = useState<number>(0);
+  const [totalPaid, setTotalPaid] = useState<number>(0);
   const [ledger, setLedger] = useState<UserDebtsResponse | null>(null);
   const [ledgerLoading, setLedgerLoading] = useState(false);
+
+  const pendingDebtCount =
+    (ledger?.owed_by_me.filter((d) => d.status === 'pending' || d.status === 'scheduled').length ?? 0) +
+    (ledger?.owed_to_me.filter((d) => d.status === 'pending' || d.status === 'scheduled').length ?? 0);
 
   const refreshLedger = useCallback(async () => {
     if (!walletAddress) return;
     try {
-      const res = await api.getUserDebts(walletAddress);
-      setLedger(res);
+      const [debtsRes, historyRes] = await Promise.allSettled([
+        api.getUserDebts(walletAddress),
+        api.getTransactionHistory(walletAddress, 100, false),
+      ]);
+      if (debtsRes.status === 'fulfilled') setLedger(debtsRes.value);
+      if (historyRes.status === 'fulfilled') {
+        const txs = historyRes.value.transactions;
+        setTxCount(txs.length);
+        // Sum up USD value of all sent transactions
+        const paid = txs
+          .filter((t) => t.direction === 'sent')
+          .reduce((sum, t) => sum + (t.amount_sol * (solPrice ?? 0)), 0);
+        setTotalPaid(paid);
+      }
     } catch (err) {
       console.warn('[ledger] fetch failed:', err);
     }
-  }, [walletAddress]);
+  }, [walletAddress, solPrice]);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useFocusEffect(
@@ -153,7 +166,7 @@ export default function ProfileScreen() {
 
         <View style={styles.statsRow}>
           <View style={styles.stat}>
-            <Text style={styles.statValue}>{transactions.length}</Text>
+            <Text style={styles.statValue}>{txCount}</Text>
             <Text style={styles.statLabel}>Transactions</Text>
           </View>
           <View style={styles.stat}>
@@ -313,6 +326,29 @@ export default function ProfileScreen() {
         </View>
 
         <TouchableOpacity
+          style={styles.signOutBtn}
+          onPress={() => {
+            Alert.alert(
+              'Sign Out',
+              'This will clear your session and return you to the login screen. Your wallet keypair stays on the device.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Sign Out',
+                  style: 'destructive',
+                  onPress: () => {
+                    signOut();
+                    router.replace('/onboarding/login');
+                  },
+                },
+              ],
+            );
+          }}
+        >
+          <Text style={styles.signOutBtnText}>Sign Out</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={styles.backBtn}
           onPress={() => router.back()}
         >
@@ -442,8 +478,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: theme.colors.onSurfaceVariant,
   },
-  backBtn: {
+  signOutBtn: {
     marginTop: 24,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.error,
+    alignItems: 'center',
+  },
+  signOutBtnText: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 14,
+    color: theme.colors.error,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    fontWeight: '700',
+  },
+  backBtn: {
+    marginTop: 12,
     paddingVertical: 14,
     borderWidth: 1,
     borderColor: theme.colors.hardBorder,

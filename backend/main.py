@@ -7,10 +7,21 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from database import connect_db, close_db
-from services.face_service import load_model, is_model_loaded
+from services.face_service import load_model, is_model_loaded, _insightface_available
 from services.gemini_service import load_gemini
-from routers import recognize, contacts, voice, payments, sol_price, transactions, debts
+from routers import (
+    recognize,
+    contacts,
+    voice,
+    payments,
+    sol_price,
+    transactions,
+    accounts,
+    debts,
+    proxy,
+)
 from models.schemas import HealthResponse
+from config import get_settings
 
 
 @asynccontextmanager
@@ -36,13 +47,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(recognize.router, prefix="/api/v1")
-app.include_router(contacts.router, prefix="/api/v1")
-app.include_router(voice.router, prefix="/api/v1")
-app.include_router(payments.router, prefix="/api/v1")
-app.include_router(sol_price.router, prefix="/api/v1")
+
+@app.middleware("http")
+async def log_requests(request, call_next):
+    """Loud per-request logger so we can see exactly what the mobile is doing."""
+    path = request.url.path
+    # Suppress noise from the constant /incoming polling.
+    quiet = path.endswith("/incoming")
+    if not quiet:
+        print(f"[req] {request.method} {path}  qs={dict(request.query_params)}")
+    response = await call_next(request)
+    if not quiet:
+        print(f"[req] -> {response.status_code} {path}")
+    return response
+
+# Local-only routes (need direct MongoDB access for the Kolana ledger).
 app.include_router(transactions.router, prefix="/api/v1")
+app.include_router(accounts.router, prefix="/api/v1")
 app.include_router(debts.router, prefix="/api/v1")
+app.include_router(sol_price.router, prefix="/api/v1")
+
+_settings = get_settings()
+if _insightface_available:
+    # Production / fully-loaded: serve everything locally.
+    app.include_router(recognize.router, prefix="/api/v1")
+    app.include_router(contacts.router, prefix="/api/v1")
+    app.include_router(voice.router, prefix="/api/v1")
+    app.include_router(payments.router, prefix="/api/v1")
+elif _settings.upstream_api_base:
+    # Dev box (no InsightFace): forward heavy endpoints to deployed backend.
+    print(f"[proxy] InsightFace missing -- forwarding recognize/voice/contacts/payments -> {_settings.upstream_api_base}")
+    app.include_router(proxy.router, prefix="/api/v1")
+else:
+    # No upstream configured and no InsightFace: still mount stubs so app boots.
+    app.include_router(recognize.router, prefix="/api/v1")
+    app.include_router(contacts.router, prefix="/api/v1")
+    app.include_router(voice.router, prefix="/api/v1")
+    app.include_router(payments.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")
