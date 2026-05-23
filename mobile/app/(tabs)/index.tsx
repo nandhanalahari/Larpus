@@ -52,7 +52,7 @@ export default function CameraScreen() {
   } = useAppStore();
 
   const { recognize, reset: resetRecognition } = useFaceRecognition();
-  const { isListening, startListening, stopListening } = useVoice();
+  const { isListening, startListening, stopListening, cancelListening } = useVoice();
   const { canAfford, usdToSol, refreshBalance, fetchSolPrice } = useWallet();
 
   useEffect(() => {
@@ -66,11 +66,17 @@ export default function CameraScreen() {
     if (walletAddress) refreshBalance();
   }, []);
 
+  // Auto-flow: face match → either confirmation prompt (low confidence) or straight to voice.
+  // High-confidence matches skip the profile-card tap entirely, per PRD F3.
   useEffect(() => {
-    if (recognizedContact && uiState === 'scanning') {
+    if (!recognizedContact || uiState !== 'scanning') return;
+    if (requiresConfirmation) {
       setUIState('profile');
+    } else {
+      setUIState('voice');
+      startListening();
     }
-  }, [recognizedContact]);
+  }, [recognizedContact, requiresConfirmation, uiState, startListening]);
 
   const captureAndRecognize = useCallback(async () => {
     if (isScanningRef.current) return;
@@ -295,11 +301,14 @@ export default function CameraScreen() {
           confidence={recognitionConfidence}
           requiresConfirmation={requiresConfirmation}
           onConfirmIdentity={() => {
+            // Low-confidence match confirmed -> jump straight to voice listening.
             useAppStore.getState().setRecognizedContact(
               recognizedContact,
               recognitionConfidence,
               false,
             );
+            setUIState('voice');
+            startListening();
           }}
           onDeny={handleClose}
           onStartPayment={handleStartPayment}
@@ -308,17 +317,27 @@ export default function CameraScreen() {
       )}
 
       {uiState === 'voice' && recognizedContact && (
-        <VoiceListener
-          isListening={isListening}
-          transcript={transcript}
-          parsedAmount={parsedAmount}
-          contactName={recognizedContact.name}
-          onAmountConfirmed={handleAmountConfirmed}
-          onCancel={() => {
-            stopListening();
-            setUIState('profile');
-          }}
-        />
+        <>
+          <View
+            pointerEvents="none"
+            style={[styles.matchBanner, { top: insets.top + 64 }]}
+          >
+            <Text style={styles.matchBannerLabel}>Paying</Text>
+            <Text style={styles.matchBannerName}>{recognizedContact.name}</Text>
+          </View>
+          <VoiceListener
+            isListening={isListening}
+            transcript={transcript}
+            parsedAmount={parsedAmount}
+            contactName={recognizedContact.name}
+            onAmountConfirmed={handleAmountConfirmed}
+            onCancel={() => {
+              // cancelListening skips the audio upload -- no wasted API call.
+              cancelListening();
+              handleClose();
+            }}
+          />
+        </>
       )}
 
       {uiState === 'payment_status' && paymentResult && recognizedContact && (
@@ -411,5 +430,28 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: theme.colors.error,
     letterSpacing: 1,
+  },
+  matchBanner: {
+    position: 'absolute',
+    alignSelf: 'center',
+    backgroundColor: theme.colors.panelBg,
+    borderWidth: 1,
+    borderColor: theme.colors.hardBorder,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  matchBannerLabel: {
+    fontFamily: theme.fonts.mono,
+    fontSize: 11,
+    letterSpacing: 2,
+    color: theme.colors.onSurfaceVariant,
+    textTransform: 'uppercase',
+  },
+  matchBannerName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: theme.colors.primary,
+    marginTop: 2,
   },
 });
